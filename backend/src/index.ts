@@ -15,10 +15,11 @@ app.get("/api/check-email/:email", async(req, res) => {
     }
   });
   if (response.status === 404) {
-    res.json({ breached: false });
+    return res.json({ breached: false });
   } 
   if (!response.ok) {
-    res.status(response.status).json({ error: "Error fetching data from HIBP" });
+    const errorBody = await response.text();
+    return res.status(response.status).json({ error: `HIBP returned ${response.status}: ${errorBody}` });
   }
   const data = await response.json();
   res.json({ breached: true, breaches: data });

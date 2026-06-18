@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useEffect } from "react";
+import EmailCheck from "./EmailCheck";
 
 type Tab = "email" | "hub" | "console";
 
@@ -27,7 +28,12 @@ function App() {
       </nav>
       
       <main>
-        {activeTab === "email" && <div>Email check tab — placeholder</div>}
+        {activeTab === 'email' && (
+        <div className="tab-content">
+        <EmailCheck />
+        </div>
+      )}
+      
         {activeTab === "hub" && <div>Security hub tab — placeholder</div>}
         {activeTab === "console" && <div>AV console tab — placeholder</div>}
         <div>Backend: {status ?? "checking..."}</div>
