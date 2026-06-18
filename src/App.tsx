@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useEffect } from "react";
 import EmailCheck from "./EmailCheck";
+import Dashboard from "./Dashboard";
 
-type Tab = "email" | "hub" | "console";
+type Tab = "email" | "dashboard" | "hub" | "console";
 
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
     <div>
       <nav style={{ display: "flex", gap: "1px" }}>
         <button onClick={() => setActiveTab("email")}>Email check</button>
+        <button onClick={() => setActiveTab("dashboard")}>Dashboard</button>
         <button onClick={() => setActiveTab("hub")}>Security hub</button>
         <button onClick={() => setActiveTab("console")}>AV console</button>
       </nav>
@@ -33,19 +35,15 @@ function App() {
         <EmailCheck />
         </div>
       )}
-      
+        {activeTab === "dashboard" && <Dashboard />}
         {activeTab === "hub" && <div>Security hub tab — placeholder</div>}
         {activeTab === "console" && <div>AV console tab — placeholder</div>}
+        
         <div>Backend: {status ?? "checking..."}</div>
       </main>
     </div>
     
   );
-
-  
-
 }
-
-
 
 export default App;
