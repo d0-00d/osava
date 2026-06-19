@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useEffect } from "react";
 import EmailCheck from "./EmailCheck";
 import Dashboard from "./Dashboard";
+import SecurityHub from "./SecurityHub";
 
 type Tab = "email" | "dashboard" | "hub" | "console";
 
@@ -36,7 +37,7 @@ function App() {
         </div>
       )}
         {activeTab === "dashboard" && <Dashboard />}
-        {activeTab === "hub" && <div>Security hub tab — placeholder</div>}
+        {activeTab === "hub" && <SecurityHub />}
         {activeTab === "console" && <div>AV console tab — placeholder</div>}
         
         <div>Backend: {status ?? "checking..."}</div>
