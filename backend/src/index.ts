@@ -16,18 +16,31 @@ type InstallStatus = {
   installed: boolean;
   engine: string | null;
   installedAt: string | null;
+  productCode: string | null;
 };
+
+/*
+  __ _ ___ _   _ _ __   ___                   
+ / _` / __| | | | '_ \ / __|                  
+| (_| \__ \ |_| | | | | (__   OR                
+ \__,_|___/\__, |_| |_|\___|              ____
+ / _|_   _ |___/| |_(_) ___  _ __  ___   / / /
+| |_| | | | '_ \| __| |/ _ \| '_ \/ __| / / / 
+|  _| |_| | | | | |_| | (_) | | | \__ \/ / /  
+|_|  \__,_|_| |_|\__|_|\___/|_| |_|___/_/_/ /
+*/
+
 
 async function readStatusFile() {
   const STATUS_FILE = path.join(os.homedir(), ".osava", "install-status.json");
 
-try{
-  await fs.access(STATUS_FILE);
-  const data = await fs.readFile(STATUS_FILE, "utf-8");
-  return JSON.parse(data);
-} catch {
-  return {installed:  false, engine: null, installedAt: null};
-}
+  try {
+    await fs.access(STATUS_FILE);
+    const data = await fs.readFile(STATUS_FILE, "utf-8");
+    return JSON.parse(data);
+  } catch {
+    return { installed: false, engine: null, installedAt: null };
+  }
 }
 
 async function writeStatusFile(status: InstallStatus) {
@@ -72,7 +85,7 @@ async function queryFirewallProfiles() {
 }
 
 async function getClamAvDownloadUrl(): Promise<string> {
-  const response = await fetch ("https://api.github.com/repos/Cisco-Talos/clamav/releases/latest", {
+  const response = await fetch("https://api.github.com/repos/Cisco-Talos/clamav/releases/latest", {
     headers: {
       "User-Agent": "osava"
     }
@@ -81,7 +94,7 @@ async function getClamAvDownloadUrl(): Promise<string> {
     throw new Error(`Failed to fetch ClamAV release info: ${response.statusText}`);
   }
 
-  const data = await response.json(); 
+  const data = await response.json();
   const targetAsset = data.assets.find((asset: any) => {
     return asset.name.includes("win.x64") && asset.name.endsWith(".msi");
   });
@@ -103,7 +116,7 @@ async function downloadFile(url: string, outputPath: string): Promise<void> {
   await fs.writeFile(outputPath, buffer);
 }
 
-async function installClamAV(url: string): Promise<string> {
+async function installClamAV(url: string): Promise<{ installPath: string; productCode: string | null }> {
   const tempPath = path.join(os.tmpdir(), "clamav-installer.msi");
   const installPath = "C:\\Program Files\\ClamAV";
   const logPath = path.join(os.tmpdir(), "clamav-install.log");
@@ -118,9 +131,50 @@ exit $process.ExitCode
   await fs.writeFile(scriptPath, psScript, "utf-8");
   await execAsync(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`);
 
-  return installPath;
+  const productCode = await getInstalledProductCode("ClamAV");
+
+  try {
+    await fs.unlink(tempPath);
+    await fs.unlink(scriptPath);
+  } catch (cleanupError) {
+    console.error("Cleanup failed (non-fatal):", cleanupError);
+  }
+
+  return { installPath, productCode };
 }
-app.get("/api/check-email/:email", async(req, res) => {
+
+async function getInstalledProductCode(name: string): Promise<string | null> {
+  const { stdout } = await execAsync(
+    `powershell -Command "Get-ChildItem 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Get-ItemProperty | Where-Object { $_.DisplayName -like '${name}*' } | Select-Object -First 1 -ExpandProperty PSChildName"`
+  );
+  return stdout.trim() || null;
+}
+
+async function uninstallClamAV(productCode: string): Promise<void> {
+  const scriptPath = path.join(os.tmpdir(), "uninstall-clamav.ps1");
+  const psScript = `
+$process = Start-Process msiexec.exe -ArgumentList '/x ${productCode} /qn /norestart' -Verb RunAs -Wait -PassThru
+exit $process.ExitCode
+`;
+  await fs.writeFile(scriptPath, psScript, "utf-8");
+  await execAsync(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`);
+  try {
+    await fs.unlink(scriptPath);
+  } catch (cleanupError) {
+    console.error("Cleanup failed (non-fatal):", cleanupError);
+  }
+}
+
+/*
+  ____ _____ _____  __               _                                 
+ / ___| ____|_   _|/ / __   ___  ___| |_   _ __ ___  __ _    ___  _ __ 
+| |  _|  _|   | | / / '_ \ / _ \/ __| __| | '__/ _ \/ _` |  / _ \| '__|
+| |_| | |___  | |/ /| |_) | (_) \__ \ |_  | | |  __/ (_| | | (_) | |   
+ \____|_____| |_/_/ | .__/ \___/|___/\__| |_|  \___|\__, |  \___/|_|   
+                    |_|                                |_|             */
+
+
+app.get("/api/check-email/:email", async (req, res) => {
   const email = encodeURIComponent(req.params.email);
   const response = await fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${email}`, {
     headers: {
@@ -130,7 +184,7 @@ app.get("/api/check-email/:email", async(req, res) => {
   });
   if (response.status === 404) {
     return res.json({ breached: false });
-  } 
+  }
   if (!response.ok) {
     const errorBody = await response.text();
     return res.status(response.status).json({ error: `HIBP returned ${response.status}: ${errorBody}` });
@@ -158,7 +212,7 @@ app.get("/api/system-status", async (_req, res) => {
     res.status(500).json({ error: "Failed to fetch system status" });
   }
 });
-    
+
 app.get("/api/install-status", async (_req, res) => {
   try {
     const status = await readStatusFile();
@@ -173,26 +227,59 @@ app.get("/api/install-status", async (_req, res) => {
 app.post("/api/install-status", async (_req, res) => {
   try {
     const url = await getClamAvDownloadUrl();
-    const installPath = await installClamAV(url);
+    const { installPath, productCode } = await installClamAV(url);
     await writeStatusFile({
       installed: true,
       engine: "clamav",
+      productCode,
       installedAt: new Date().toISOString()
     });
-    res.json({ success: true, message: "ClamAV installed", installPath });
+    res.json({ success: true, message: "ClamAV installed", installPath, productCode });
   } catch (error: any) {
-  if (error.code === 3010) {
-    await writeStatusFile({
-      installed: true,
-      engine: "clamav",
-      installedAt: new Date().toISOString()
-    });
-    res.json({ success: true, message: "ClamAV installed (reboot required)" });
-    return;
+    if (error.code === 3010) {
+      const productCode = await getInstalledProductCode("ClamAV");
+      await writeStatusFile({
+        installed: true,
+        engine: "clamav",
+        productCode,
+        installedAt: new Date().toISOString()
+      });
+      res.json({ success: true, message: "ClamAV installed (reboot required)" });
+      return;
+    }
+    console.error("Install failed:", error);
+    res.status(500).json({ error: error.message || "Failed to install ClamAV" });
   }
-  console.error("Install failed:", error);
-  res.status(500).json({ error: "Failed to install ClamAV" });
-}
 });
+
+app.post("/api/uninstall", async (_req, res) => {
+  try {
+    const status = await readStatusFile();
+    if (!status.installed) {
+      return res.status(400).json({ error: "Nothing installed" });
+    }
+
+    let productCode = status.productCode;
+    if (!productCode) {
+      productCode = await getInstalledProductCode("ClamAV");
+    }
+    if (!productCode) {
+      return res.status(400).json({ error: "Could not determine product code for installed engine" });
+    }
+
+    await uninstallClamAV(productCode);
+    await writeStatusFile({ installed: false, engine: null, installedAt: null, productCode: null });
+    res.json({ success: true, message: "ClamAV uninstalled" });
+  } catch (error: any) {
+    if (error.code === 3010) {
+      await writeStatusFile({ installed: false, engine: null, installedAt: null, productCode: null });
+      res.json({ success: true, message: "ClamAV uninstalled (reboot required)" });
+      return;
+    }
+    console.error("Uninstall failed:", error);
+    res.status(500).json({ error: error.message || "Failed to uninstall ClamAV" });
+  }
+});
+
 
 app.listen(4000, () => console.log("backend running on port 4000"));  
