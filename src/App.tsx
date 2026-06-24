@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import EmailCheck from "./EmailCheck";
 import Dashboard from "./Dashboard";
 import SecurityHub from "./SecurityHub";
+import AvConsole from "./AvConsole";
 
 type Tab = "email" | "dashboard" | "hub" | "console";
 
@@ -9,6 +10,7 @@ type InstallStatus = {
   installed: boolean;
   engine: string | null;
   installedAt: string | null;
+  productCode: string | null;
 };
 
 function App() {
@@ -58,11 +60,10 @@ function App() {
         )}
         {activeTab === "dashboard" && <Dashboard />}
         {activeTab === "hub" && (
-          <SecurityHub status={installStatus} onInstallChange={fetchInstallStatus} />
+          <SecurityHub status={installStatus} onInstallChange={fetchInstallStatus}  />
         )}
-        {activeTab === "console" && installStatus?.installed && (
-          <div>AV console tab — placeholder</div>
-        )}
+        {activeTab === "console" && <AvConsole />}
+        
 
         <div>Backend: {status ?? "checking..."}</div>
       </main>

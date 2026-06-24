@@ -6,9 +6,15 @@ import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { send, stdout } from "node:process";
+import { log } from "node:console";
 
 const execAsync = promisify(exec);
 const app = express();
+const CLAMAV_DIR  = "C:\\Program Files\\ClamAV";
+const CLAMDB_DIR = path.join(CLAMAV_DIR, "database");
+const FRESHCLAMAM_CONF = path.join(CLAMAV_DIR, "freshclam.conf");
 dotenv.config();
 app.use(cors());
 
@@ -126,7 +132,22 @@ async function installClamAV(url: string): Promise<{ installPath: string; produc
 
   const psScript = `
 $process = Start-Process msiexec.exe -ArgumentList '/i "${tempPath}" ALLUSERS=1 /qn /norestart /l*v "${logPath}"' -Verb RunAs -Wait -PassThru
-exit $process.ExitCode
+$exitCode = $process.ExitCode
+
+if ($exitCode -eq 0 -or $exitCode -eq 3010) {
+  $dbDir = 'C:\\Program Files\\ClamAV\\database'
+  $confPath = 'C:\\Program Files\\ClamAV\\freshclam.conf'
+  
+  if (-not (Test-Path $dbDir)) {
+    New-Item -ItemType Directory -Path $dbDir | Out-Null
+  }
+  
+  if (-not (Test-Path $confPath)) {
+   $content = 'DatabaseDirectory "C:\\Program Files\\ClamAV\\database"' + [char]10 + 'DatabaseMirror database.clamav.net' + [char]10 + 'UpdateLogFile "' + $env:USERPROFILE + '\\.osava\\freshclam.log"' + [char]10 + 'LogTime yes'
+  }
+}
+
+exit $exitCode
 `;
   await fs.writeFile(scriptPath, psScript, "utf-8");
   await execAsync(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`);
@@ -162,6 +183,20 @@ exit $process.ExitCode
     await fs.unlink(scriptPath);
   } catch (cleanupError) {
     console.error("Cleanup failed (non-fatal):", cleanupError);
+  }
+}
+
+async function setUpClamAConfig(): Promise<void> {
+  try {
+    await fs.access(FRESHCLAMAM_CONF);
+  } catch {
+    const config = [
+      `DatabaseDirectory "${CLAMDB_DIR}"`,
+      `UpdateLogFile "${path.join(CLAMAV_DIR, "freshclam.log")}"`,
+      `LogTime yes`,
+    ].join("\n");
+    await fs.writeFile(FRESHCLAMAM_CONF, config, "utf-8");
+    console.log("freshclam.conf created");
   }
 }
 
@@ -281,5 +316,102 @@ app.post("/api/uninstall", async (_req, res) => {
   }
 });
 
+app.get("/api/av/update-definitions", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
 
+  const sendEvent = (type: string, data: string) => {
+    res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+  };
+
+  sendEvent("log", "Starting definitions update...");
+
+  const freshclam = spawn(
+    `${CLAMAV_DIR}\\freshclam.exe`,
+    [`--config-file=${CLAMAV_DIR}\\freshclam.conf`],
+    { shell: false }
+  );
+
+  freshclam.stdout.on("data", (chunk) => {
+    chunk.toString().split("\n")
+      .filter((l: string) => l.trim())
+      .forEach((line: string) => sendEvent("log", line));
+  });
+
+  freshclam.stderr.on("data", (chunk) => {
+    chunk.toString().split("\n")
+      .filter((l: string) => l.trim())
+      .forEach((line: string) => sendEvent("log", line));
+  });
+
+  freshclam.on("close", (code) => {
+    if (code === 0) {
+      sendEvent("done", "Definitions updated successfully!");
+    } else {
+      sendEvent("error", `freshclam exited with code ${code}`);
+    }
+    res.end();  
+  });
+
+  req.on("close", () => freshclam.kill());
+
+app.get("/api/av/scan", (req, res) =>{
+  const scanPath = req.query.path as string;
+  if(!scanPath){
+    res.status(400).json({error: "No path provided."})
+    return;
+  }
+
+  res.setHeader("Content-type", "text/event-stream");
+  res.setHeader("Cache-control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const sendEvent = (type:string, data:string) => {
+    res.write(`data: ${JSON.stringify({type, data})} \n \n`);
+  };
+
+  sendEvent("log", `Starting scan of: ${scanPath}`);
+  const clamscan = spawn (
+    `${CLAMAV_DIR}\\clamscan.exe`,
+    [
+      "--database", CLAMDB_DIR,
+      "--recursive",
+      "--infected",
+      scanPath
+    ],
+    {shell: false}
+  );
+
+  clamscan.stdout.on("data", (chunk) => {
+    chunk.toString().split("\n")
+      .filter((l: string) => l.trim())
+      .forEach((line: string) => {
+        const isInfected = line.includes("FOUND");
+        sendEvent(isInfected ? "error" : "log", line);
+      });
+  });
+
+  clamscan.stderr.on("data", (chunk) => {
+    chunk.toString().split("\n")
+      .filter((l: string) => l.trim())
+      .forEach((line: string) => sendEvent("log", line));
+      });
+
+  clamscan.on("close", (code) =>{
+    if(code === 0){
+      sendEvent("done", "Scan complete. No threats found.");
+    }
+    else if(code === 1){
+      sendEvent("error", "Scan Complete!, Threats found!");
+    }
+    else{
+      sendEvent("error", `Scan exited with code ${code}`);
+    }
+    res.end();
+  });
+
+  req.on("close", () => clamscan.kill());
+  });
+})
 app.listen(4000, () => console.log("backend running on port 4000"));  
