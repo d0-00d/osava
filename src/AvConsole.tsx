@@ -140,8 +140,7 @@ export default function AvConsole() {
         {scanning && (
         <button onClick={cancelScan}>Cancel</button>
         )}  
-        <button onClick={pickupHolder} disabled={busy}>Browse</button>
-        
+        <button onClick={pickupHolder} disabled={busy}>Browse</button>  
       </div>
 
       <div style={{
