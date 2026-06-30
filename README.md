@@ -34,7 +34,7 @@ Osava is a Windows-focused desktop security dashboard built with Tauri, React, a
 1. Install dependencies for the root app:
 
    ```bash
-   cd c:\Users\Ayush\osava
+   cd c:\Users\username\osava
    npm install
    ```
 
@@ -69,7 +69,7 @@ The backend exposes these key endpoints:
 ### Start the frontend
 
 ```bash
-cd c:\Users\Ayush\osava
+cd c:\Users\username\osava
 npm run dev
 ```
 
