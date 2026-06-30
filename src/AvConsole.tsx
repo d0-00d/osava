@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 type LogLine = {
   id: number;
@@ -10,6 +11,7 @@ export default function AvConsole() {
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [updating, setUpdating] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [verboseScan, setVerboseScan] = useState(false);
   const [scanPath, setScanPath] = useState(
     `C:\\Users\\${window.navigator.platform.includes("Win") ? "" : ""}` 
   );
@@ -19,6 +21,12 @@ export default function AvConsole() {
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
+
+  useEffect(() => {
+  fetch("http://localhost:4000/api/homedir")
+    .then(r => r.json())
+    .then(d => setScanPath(d.homedir + "\\Downloads"));
+}, []);
 
   function addLog(type: LogLine["type"], text: string) {
     setLogs(prev => [...prev, { id: logCounter.current++, type, text }]);
@@ -31,7 +39,7 @@ export default function AvConsole() {
   function startUpdate() {
     clearLogs();
     setUpdating(true);
-    const source = new EventSource("http://localhost:4000/api/av/update-definitions");
+    const source = new EventSource("http://localhost:4000/api/av/update-definitions'");
 
     source.onmessage = (e) => {
       const { type, data } = JSON.parse(e.data);
@@ -54,7 +62,7 @@ export default function AvConsole() {
     setScanning(true);
     try {
       const response = await fetch(
-        `http://localhost:4000/api/av/scan?path=${encodeURIComponent(scanPath)}`
+        `http://localhost:4000/api/av/scan?path=${encodeURIComponent(scanPath)}&verbose=${verboseScan}`
       );
       const reader = response.body!.getReader();
       const decoder = new TextDecoder();
@@ -82,6 +90,23 @@ export default function AvConsole() {
     }
   }
 
+  async function cancelScan() {
+    try{
+      const response = await fetch("http://localhost:4000/api/av/cancelscan", {method: "POST"});
+    } catch (err) {
+      console.error("Error fetching cancel! message:", err);
+    } finally{
+      setScanning(false);
+    }
+  }
+
+  async function pickupHolder() {
+    const selected = await open({directory:true, multiple:false});
+    if(selected){
+      setScanPath(selected as string);
+    }
+  }
+
   const busy = updating || scanning;
 
   return (
@@ -94,7 +119,14 @@ export default function AvConsole() {
         </button>
         <button onClick={clearLogs} disabled={busy}>Clear</button>
       </div>
-
+      <label>
+        <input 
+          type="checkbox"
+          checked={verboseScan}
+          onChange={e => setVerboseScan(e.target.checked)}
+          />
+          Show all files
+      </label>
       <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
         <input
           value={scanPath}
@@ -105,6 +137,11 @@ export default function AvConsole() {
         <button onClick={startScan} disabled={busy}>
           {scanning ? "Scanning..." : "Scan"}
         </button>
+        {scanning && (
+        <button onClick={cancelScan}>Cancel</button>
+        )}  
+        <button onClick={pickupHolder} disabled={busy}>Browse</button>
+        
       </div>
 
       <div style={{
