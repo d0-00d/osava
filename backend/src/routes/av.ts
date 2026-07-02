@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { updateDefinitions, startScan, cancelScan } from "../services/avService";
+import { readHistoryFile } from "../services/statusFile";
 
 const router = Router();
 
@@ -54,4 +55,13 @@ router.post("/api/av/cancelscan", (req, res) => {
   return res.status(200).json(result);
 });
 
+router.get("/api/av/history", async(_req, res) => {
+  try{
+    const history = await readHistoryFile();
+    res.status(200).json(history);
+  } catch (error) {
+    console.error("Error reading history file:", error);
+    res.status(500).json({ error: "Failed to read history file." });
+  }
+  })
 export default router;

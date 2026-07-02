@@ -8,7 +8,7 @@ export type InstallStatus = {
 export type ScanRecord = {
   id: string;
   path: string;
-  startedAt: string;
+  startAt: string;
   finishedAt: string;
   outcome: "clean" | "infected" | "cancelled" | "error";
   infectedFiles: string[];

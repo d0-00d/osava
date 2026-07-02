@@ -1,5 +1,7 @@
 import { spawn, ChildProcess } from "node:child_process";
 import { CLAMAV_DIR, CLAMDB_DIR, FRESHCLAM_CONF, currentScan } from "../config";
+import { appendHistoryRecord} from "./statusFile";
+import type { ScanRecord } from "../types";
 
 export function updateDefinitions(
   onEvent: (type: string, data: string) => void,
@@ -87,25 +89,35 @@ export function startScan(
     heartbeat = setInterval(() => onEvent("log", "Scanning..."), 3000);
   }
 
-  clamscan.on("close", (code) => {
-    if (heartbeat) clearInterval(heartbeat);
-    if (code === null) {
-      onEvent("log", "Scan cancelled.");
-    } else if (code === 0) {
-      onEvent("done", "Scan complete. No threats found.");
-    } else if (code === 1) {
-      onEvent("error", "Scan complete. Threats were found!");
-    } else {
-      onEvent("error", `Scan exited with code ${code}`);
-    }
-    currentScan.currentScan = null;
-    onEnd(code);
-  });
+  clamscan.on("close", async (code) => {
+  if (heartbeat) clearInterval(heartbeat);
   
-
-  return clamscan;
+  const record: ScanRecord = {
+    id: Date.now().toString(),
+    path: scanPath,
+    startAt,
+    finishedAt: new Date().toISOString(),
+    outcome: code === null ? "cancelled" : code === 0 ? "clean" : code === 1 ? "infected" : "error",
+    infectedFiles,
+    verbose,
+  };
+  await appendHistoryRecord(record);
+  
+  if (code === null) {
+    onEvent("log", "Scan cancelled.");
+  } else if (code === 0) {
+    onEvent("done", "Scan complete. No threats found.");
+  } else if (code === 1) {
+    onEvent("error", "Scan complete. Threats were found!");
+  } else {
+    onEvent("error", `Scan exited with code ${code}`);
+  }
+  
+  currentScan.currentScan = null;
+  onEnd(code);
+});
+return clamscan;
 }
-
 export function cancelScan(): { success: boolean; error?: string; message?: string } {
   if (currentScan.currentScan === null) {
     return {
