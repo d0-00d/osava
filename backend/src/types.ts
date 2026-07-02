@@ -1,5 +1,3 @@
-import type { ChildProcess } from "node:child_process";
-
 export type InstallStatus = {
   installed: boolean;
   engine: string | null;
@@ -8,5 +6,11 @@ export type InstallStatus = {
 };
 
 export type ScanRecord = {
-  currentScan: ChildProcess | null;
+  id: string;
+  path: string;
+  startedAt: string;
+  finishedAt: string;
+  outcome: "clean" | "infected" | "cancelled" | "error";
+  infectedFiles: string[];
+  verbose: boolean;
 };

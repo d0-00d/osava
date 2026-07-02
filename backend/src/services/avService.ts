@@ -53,7 +53,8 @@ export function startScan(
   if (!verbose) args.splice(2, 0, "--infected");
 
   onEvent("log", `Starting scan of: ${scanPath}`);
-
+  const startAt = new Date().toISOString();
+  const infectedFiles: string[] = [];
   const clamscan = spawn(
     `${CLAMAV_DIR}\\clamscan.exe`, args,
     { shell: false }
@@ -66,6 +67,12 @@ export function startScan(
       .forEach((line: string) => {
         const isInfected = line.includes("FOUND");
         onEvent(isInfected ? "error" : "log", line);
+        if (isInfected) {
+          const filename = line.split(":")[0]?.trim();
+          if (filename) {
+            infectedFiles.push(filename);
+          }
+        }
       });
   });
 
@@ -94,6 +101,7 @@ export function startScan(
     currentScan.currentScan = null;
     onEnd(code);
   });
+  
 
   return clamscan;
 }
