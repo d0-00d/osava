@@ -107,6 +107,31 @@ export default function AvConsole() {
     }
   }
 
+  async function getArchive() {
+    try {
+      console.log("1. Fetching archive..."); // Debug step 1
+      const response = await fetch("http://localhost:4000/api/av/history");
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch archive: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log("2. Data received from backend:", data); // Debug step 2
+      
+      clearLogs(); 
+
+      addLog("log", JSON.stringify(data, null, 2));
+
+      addLog("done", "Archive loaded successfully.");
+
+    } catch (err) {
+      console.error("3. Error caught in getArchive:", err); // Debug step 3
+      const message = err instanceof Error ? err.message : String(err);
+      addLog("error", `Error fetching archive: ${message}`);
+    }
+  }
+
   const busy = updating || scanning;
 
   return (
@@ -141,6 +166,7 @@ export default function AvConsole() {
         <button onClick={cancelScan}>Cancel</button>
         )}  
         <button onClick={pickupHolder} disabled={busy}>Browse</button>  
+        <button onClick={getArchive} disabled={busy}>Get Archive</button>
       </div>
 
       <div style={{
