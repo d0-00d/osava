@@ -3,8 +3,9 @@ import EmailCheck from "./EmailCheck";
 import Dashboard from "./Dashboard";
 import SecurityHub from "./SecurityHub";
 import AvConsole from "./AvConsole";
+import ScanHistory from "./ScanHistory";
 
-type Tab = "email" | "dashboard" | "hub" | "console";
+type Tab = "email" | "dashboard" | "hub" | "console" | "history";
 
 type InstallStatus = {
   installed: boolean;
@@ -17,6 +18,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>("email");
   const [status, setStatus] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState<InstallStatus | null>(null);
+  const [hasHistory, setHasHistory] = useState<boolean>(false);
 
   useEffect(() => {
     async function checkBackend() {
@@ -41,6 +43,25 @@ function App() {
     fetchInstallStatus();
   }, []);
 
+  async function checkHistory() {
+    try {
+      const response = await fetch("http://localhost:4000/api/av/history");
+      if (response.ok) {    
+          const data = await response.json();
+          setHasHistory(true);
+          setHasHistory(data.length > 0);
+      } else {
+        console.error("Failed to fetch scan history:", response.statusText);
+      }
+    } catch (error) {
+      console.error("Failed to fetch scan history:", error);
+    }
+  }
+  useEffect(() => {
+  checkHistory();
+}, []);
+
+
   return (
     <div>
       <nav style={{ display: "flex", gap: "1px" }}>
@@ -50,6 +71,12 @@ function App() {
         {installStatus?.installed && (
           <button onClick={() => setActiveTab("console")}>AV console</button>
         )}
+        {hasHistory && (
+        <button onClick={() => setActiveTab("history")}>Scan history</button>
+      )}
+      </nav>
+      <nav style={{ display: "flex", gap: "1px" }}>
+
       </nav>
 
       <main>
@@ -62,8 +89,8 @@ function App() {
         {activeTab === "hub" && (
           <SecurityHub status={installStatus} onInstallChange={fetchInstallStatus}  />
         )}
-        {activeTab === "console" && <AvConsole />}
-        
+        {activeTab === "console" && <AvConsole onScanComplete={checkHistory} />}
+        {activeTab === "history" && <ScanHistory />}
 
         <div>Backend: {status ?? "checking..."}</div>
       </main>

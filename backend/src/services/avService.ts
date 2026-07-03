@@ -70,7 +70,7 @@ export function startScan(
         const isInfected = line.includes("FOUND");
         onEvent(isInfected ? "error" : "log", line);
         if (isInfected) {
-          const filename = line.split(":")[0]?.trim();
+          const filename = line.substring(0, line.lastIndexOf(":")).trim();
           if (filename) {
             infectedFiles.push(filename);
           }
@@ -95,7 +95,7 @@ export function startScan(
   const record: ScanRecord = {
     id: Date.now().toString(),
     path: scanPath,
-    startAt,
+    startedAt: new Date().toISOString(),
     finishedAt: new Date().toISOString(),
     outcome: code === null ? "cancelled" : code === 0 ? "clean" : code === 1 ? "infected" : "error",
     infectedFiles,

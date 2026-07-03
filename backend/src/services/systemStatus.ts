@@ -15,7 +15,7 @@ export function decodeProductState(state: number) {
 
 export async function queryProducts(className: string) {
   const { stdout } = await execAsync(
-    `powershell -Command "Get-CimInstance -Namespace root\\\\SecurityCenter2 -ClassName ${className} | ConvertTo-Json"`
+    `powershell -Command "Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct | ConvertTo-Json"`
   );
   if (!stdout.trim()) return [];
   const parsed = JSON.parse(stdout);

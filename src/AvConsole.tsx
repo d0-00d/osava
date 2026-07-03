@@ -7,7 +7,12 @@ type LogLine = {
   text: string;
 };
 
-export default function AvConsole() {
+type AvConsoleProps = {
+  onScanComplete: () => void;
+};
+  
+
+export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [updating, setUpdating] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -39,7 +44,7 @@ export default function AvConsole() {
   function startUpdate() {
     clearLogs();
     setUpdating(true);
-    const source = new EventSource("http://localhost:4000/api/av/update-definitions'");
+    const source = new EventSource("http://localhost:4000/api/av/update-definitions");
 
     source.onmessage = (e) => {
       const { type, data } = JSON.parse(e.data);
@@ -87,6 +92,7 @@ export default function AvConsole() {
       addLog("error", "Scan request failed.");
     } finally {
       setScanning(false);
+      onScanComplete();
     }
   }
 
@@ -104,31 +110,6 @@ export default function AvConsole() {
     const selected = await open({directory:true, multiple:false});
     if(selected){
       setScanPath(selected as string);
-    }
-  }
-
-  async function getArchive() {
-    try {
-      console.log("1. Fetching archive..."); // Debug step 1
-      const response = await fetch("http://localhost:4000/api/av/history");
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch archive: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      console.log("2. Data received from backend:", data); // Debug step 2
-      
-      clearLogs(); 
-
-      addLog("log", JSON.stringify(data, null, 2));
-
-      addLog("done", "Archive loaded successfully.");
-
-    } catch (err) {
-      console.error("3. Error caught in getArchive:", err); // Debug step 3
-      const message = err instanceof Error ? err.message : String(err);
-      addLog("error", `Error fetching archive: ${message}`);
     }
   }
 
@@ -166,7 +147,6 @@ export default function AvConsole() {
         <button onClick={cancelScan}>Cancel</button>
         )}  
         <button onClick={pickupHolder} disabled={busy}>Browse</button>  
-        <button onClick={getArchive} disabled={busy}>Get Archive</button>
       </div>
 
       <div style={{
