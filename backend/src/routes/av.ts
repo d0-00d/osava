@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { updateDefinitions, startScan, cancelScan } from "../services/avService";
 import { readHistoryFile } from "../services/statusFile";
+import fs from "node:fs/promises";
+import { CLAMDB_DIR } from "../config";
 
 const router = Router();
 
@@ -63,5 +65,16 @@ router.get("/api/av/history", async(_req, res) => {
     console.error("Error reading history file:", error);
     res.status(500).json({ error: "Failed to read history file." });
   }
-  })
+  });
+
+router.get("/definitions-status", async (_req, res) => {
+  try {
+    const files = await fs.readdir(CLAMDB_DIR);
+    const hasDb = files.some(f => f.endsWith(".cvd") || f.endsWith(".cld"));
+    res.json({ ready: hasDb });
+  } catch {
+    res.json({ ready: false });
+  }
+});
+  
 export default router;

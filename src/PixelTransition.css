@@ -1,0 +1,30 @@
+.pixel-transition {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.pixel-transition__layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.pixel-transition__layer--second {
+  z-index: 2;
+}
+
+.pixel-transition__pixels {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.pixel-transition__pixel {
+  display: none;
+  position: absolute;
+}
