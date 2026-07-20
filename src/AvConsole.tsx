@@ -98,7 +98,7 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
 
   async function cancelScan() {
     try{
-      const response = await fetch("http://localhost:4000/api/av/cancelscan", {method: "POST"});
+      await fetch("http://localhost:4000/api/av/cancelscan", {method: "POST"});
     } catch (err) {
       console.error("Error fetching cancel! message:", err);
     } finally{

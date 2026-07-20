@@ -41,8 +41,10 @@ export default function SecurityHub({ status, onInstallChange }: SecurityHubProp
     try {
       const response = await fetch("http://localhost:4000/api/uninstall", { method: "POST" });
       const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.error || "Uninstall failed");
+      if (!response.ok) {
+        setError(data.error || "Uninstall failed");
+        return;
+      }
       await onInstallChange();
     } catch (err) {
       console.error("Uninstall request failed.", err);
@@ -70,6 +72,11 @@ export default function SecurityHub({ status, onInstallChange }: SecurityHubProp
           <button onClick={handleInstall} disabled={installing}>
             {installing ? "Installing..." : "Install"}
           </button>
+        )}
+        {error && (
+          <p style={{ color: "var(--status-warn)", marginTop: 8, fontSize: 12 }}>
+            {error}
+          </p>
         )}
       </div>
     </div>

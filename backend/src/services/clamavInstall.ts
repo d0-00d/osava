@@ -38,7 +38,17 @@ export async function installClamAV(url: string): Promise<{ installPath: string;
   await downloadFile(url, tempPath);
 
   const psScript = `
-$process = Start-Process msiexec.exe -ArgumentList '/i "${tempPath}" ALLUSERS=1 /qn /norestart /l*v "${logPath}"' -Verb RunAs -Wait -PassThru
+try {
+  $process = Start-Process msiexec.exe -ArgumentList '/i "${tempPath}" ALLUSERS=1 /qn /norestart /l*v "${logPath}"' -Verb RunAs -Wait -PassThru -ErrorAction Stop
+} catch {
+  $native = $_.Exception.NativeErrorCode
+  if ($null -eq $native -and $_.Exception.InnerException) { $native = $_.Exception.InnerException.NativeErrorCode }
+  if ($native -eq 1223) { exit 1223 }
+  Write-Error $_.Exception.Message
+  exit 1
+}
+
+if ($null -eq $process) { exit 1 }
 $exitCode = $process.ExitCode
 
 if ($exitCode -eq 0 -or $exitCode -eq 3010) {
@@ -87,7 +97,17 @@ export async function getInstalledProductCode(name: string): Promise<string | nu
 export async function uninstallClamAV(productCode: string): Promise<void> {
   const scriptPath = path.join(os.tmpdir(), "uninstall-clamav.ps1");
   const psScript = `
-$process = Start-Process msiexec.exe -ArgumentList '/x ${productCode} /qn /norestart' -Verb RunAs -Wait -PassThru
+try {
+  $process = Start-Process msiexec.exe -ArgumentList '/x ${productCode} /qn /norestart' -Verb RunAs -Wait -PassThru -ErrorAction Stop
+} catch {
+  $native = $_.Exception.NativeErrorCode
+  if ($null -eq $native -and $_.Exception.InnerException) { $native = $_.Exception.InnerException.NativeErrorCode }
+  if ($native -eq 1223) { exit 1223 }
+  Write-Error $_.Exception.Message
+  exit 1
+}
+
+if ($null -eq $process) { exit 1 }
 exit $process.ExitCode
 `;
   await fs.writeFile(scriptPath, psScript, "utf-8");

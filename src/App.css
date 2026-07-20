@@ -43,10 +43,22 @@ body,
 
 /* ─── Layout ─────────────────────────────────────────── */
 
+/* Fixed LetterGlitch backdrop, painted behind the whole app. Low opacity keeps
+   it a faint texture rather than a distraction — tune `opacity` to taste. */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.12;
+  pointer-events: none;
+}
+
 .app-shell {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 /* ─── Sidebar ────────────────────────────────────────── */
@@ -55,7 +67,8 @@ body,
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   height: 100vh;
-  background: var(--surface);
+  /* mostly opaque for legible nav; still lets a whisper of the glitch through */
+  background: rgba(17, 17, 20, 0.82);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -182,10 +195,15 @@ body,
 
 .content {
   flex: 1;
-  height: 100vh;
+  height: calc(100vh - 24px);
+  margin: 12px;
   overflow-y: auto;
   padding: 28px 32px;
-  background: var(--bg);
+  /* solid black window-panel tile so content stays readable over the glitch;
+     the 12px margin lets the backdrop frame it like a tile */
+  background: #0a0a0c;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
 .page-title {
@@ -451,7 +469,8 @@ body,
   justify-content: center;
   position: relative;
   overflow: hidden;
-  background-color: #0a090c;
+  /* translucent so the .app-bg glitch shows through during the splash too */
+  background-color: rgba(10, 9, 12, 0.55);
   background-image: radial-gradient(#201f20 1px, transparent 1px);
   background-size: 10px 10px;
 }
@@ -535,6 +554,15 @@ body,
   text-transform: uppercase;
   color: var(--text-primary);
   text-align: center;
+}
+
+/* Sized, positioned host for the <ASCIIText> OSAVA wordmark. The component
+   renders position:absolute and fills this box, so it needs explicit dims. */
+.splash-ascii {
+  position: relative;
+  width: 100%;
+  height: 160px;
+  cursor: pointer;
 }
 
 .splash-terminal {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import Shuffle from "./Shuffle";
+import ASCIIText from "./ASCIIText";
 
 type TerminalLine = {
   text: string;
@@ -19,6 +19,19 @@ export default function SplashScreen({ onComplete }: SplashProps) {
   const [lines, setLines] = useState<TerminalLine[]>([]);
   const [allDone, setAllDone] = useState(false);
   const termRef = useRef<HTMLDivElement>(null);
+  // 1–47 keeps "OSAVA" legible; past ~47 the glyphs get too coarse to read.
+  const rollAsciiSize = () => Math.floor(Math.random() * 47) + 1;
+  // Rolled once on mount (lazy initializer): stable across re-renders, fresh
+  // every app open. Clicking the wordmark re-rolls it (see shuffleAsciiSize).
+  const [asciiSize, setAsciiSize] = useState(rollAsciiSize);
+
+  function shuffleAsciiSize() {
+    setAsciiSize(prev => {
+      let next = rollAsciiSize();
+      while (next === prev) next = rollAsciiSize(); // guarantee a visible change
+      return next;
+    });
+  }
 
   // Auto-scroll terminal to bottom on new lines
   useEffect(() => {
@@ -143,22 +156,18 @@ export default function SplashScreen({ onComplete }: SplashProps) {
         <div className="splash-indicator">
         </div>
 
-        <Shuffle
-          tag="h1"
-          className="splash-title"
-          text="Welcome to OSAVA"
-          shuffleDirection="right"
-          duration={0.35}
-          animationMode="evenodd"
-          shuffleTimes={2}
-          ease="power3.out"
-          stagger={0.03}
-          scrambleCharset="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&@*"
-          threshold={0.1}
-          triggerOnce={true}
-          triggerOnHover={true}
-          respectReducedMotion={true}
-        />
+        <div
+          className="splash-ascii"
+          onClick={shuffleAsciiSize}
+          title="Click to resize"
+        >
+          <ASCIIText
+            text="OSAVA"
+            enableWaves={false}
+            asciiFontSize={asciiSize}
+            planeBaseHeight={14}
+          />
+        </div>
 
         <div className="splash-terminal" ref={termRef}>
           {lines.map((line, i) => (

@@ -37,6 +37,14 @@ router.post("/api/install-status", async (_req, res) => {
       res.json({ success: true, message: "ClamAV installed (reboot required)" });
       return;
     }
+    if (error.code === 1223) {
+      // UAC elevation was denied — msiexec never ran, nothing changed on disk.
+      // Do NOT write install-status.json; report an honest, distinct failure.
+      return res.status(403).json({
+        error: "Elevation was denied — the install was cancelled.",
+        code: "ELEVATION_DENIED",
+      });
+    }
     console.error("Install failed:", error);
     res.status(500).json({ error: error.message || "Failed to install ClamAV" });
   }
@@ -61,6 +69,14 @@ router.post("/api/uninstall", async (_req, res) => {
       await writeStatusFile({ installed: false, engine: null, installedAt: null, productCode: null });
       res.json({ success: true, message: "ClamAV uninstalled (reboot required)" });
       return;
+    }
+    if (error.code === 1223) {
+      // UAC elevation was denied — msiexec never ran, ClamAV is still installed.
+      // Do NOT write install-status.json; report an honest, distinct failure.
+      return res.status(403).json({
+        error: "Elevation was denied — the uninstall was cancelled.",
+        code: "ELEVATION_DENIED",
+      });
     }
     console.error("Uninstall failed:", error);
     res.status(500).json({ error: error.message || "Failed to uninstall ClamAV" });

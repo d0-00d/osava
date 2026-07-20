@@ -6,6 +6,7 @@ import AvConsole from "./AvConsole";
 import ScanHistory from "./ScanHistory";
 import SplashScreen from "./SplashScreen";
 import PixelTransition from "./PixelTransition";
+import LetterGlitch from "./LetterGlitch";
 
 import "./App.css";
 
@@ -87,6 +88,7 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-wordmark">OSAVA</div>
+          <div className="sidebar-tagline">Open Source Antivirus</div>
           <div className="sidebar-tagline">Security Suite</div>
         </div>
 
@@ -130,25 +132,43 @@ function App() {
     </div>
   );
 
+  // Faint animated LetterGlitch backdrop, fixed behind everything (splash + shell).
+  // The surfaces on top (.content/.sidebar/.splash-container) are translucent so
+  // it shows through — see App.css.
+  const backdrop = (
+    <div className="app-bg" aria-hidden="true">
+      <LetterGlitch
+        glitchColors={["#ffffff", "#adb8ab", "#f0f0f0"]}
+        glitchSpeed={20}
+        centerVignette
+        outerVignette
+        smooth
+      />
+    </div>
+  );
+
   // Until the handoff finishes, the transition owns the screen: it holds the
   // splash, covers it with the pixel grid, swaps the shell in underneath, then
   // dissolves away to reveal it.
-  if (!initialized) {
-    return (
-      <PixelTransition
-        active={transitioning}
-        onComplete={() => setInitialized(true)}
-        gridSize={28}
-        pixelColor="#0c0c0e"
-        animationStepDuration={0.5}
-        holdDuration={0.12}
-        firstContent={<SplashScreen onComplete={() => setTransitioning(true)} />}
-        secondContent={shell}
-      />
-    );
-  }
-
-  return shell;
+  return (
+    <>
+      {backdrop}
+      {!initialized ? (
+        <PixelTransition
+          active={transitioning}
+          onComplete={() => setInitialized(true)}
+          gridSize={28}
+          pixelColor="#e3e3ec"
+          animationStepDuration={0.5}
+          holdDuration={0.12}
+          firstContent={<SplashScreen onComplete={() => setTransitioning(true)} />}
+          secondContent={shell}
+        />
+      ) : (
+        shell
+      )}
+    </>
+  );
 }
 
 export default App;
