@@ -31,12 +31,7 @@ router.get("/api/boot", async (req, res) => {
     send("log", "> Checking environment configuration...");
     await sleep(300);
 
-    const hasApiKey = !!process.env.HIBP_API_KEY;
-    if (hasApiKey) {
-      send("ok", "  HIBP API key configured");
-    } else {
-      send("warn", "  HIBP API key missing — email breach checks will fail");
-    }
+    send("ok", "  Environment configuration ready");
     await sleep(200);
 
     send("ok", "  Express server listening on :4000");
@@ -48,7 +43,6 @@ router.get("/api/boot", async (req, res) => {
 
     const routes = [
       { name: "system",  endpoints: ["/health", "/api/homedir", "/api/system-status"] },
-      { name: "email",   endpoints: ["/api/check-email/:email"] },
       { name: "install", endpoints: ["/api/install-status", "/api/uninstall"] },
       { name: "av",      endpoints: ["/api/av/scan", "/api/av/update-definitions", "/api/av/history"] },
     ];

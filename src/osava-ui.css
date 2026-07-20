@@ -269,3 +269,45 @@
   color: var(--osv-danger);
   word-break: break-all;
 }
+
+/* ── Toolbar / field rows ───────────────────────────────────── */
+.osv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.osv-toolbar-spacer { flex: 1 1 auto; }
+.osv-field-row { display: flex; gap: 10px; align-items: center; }
+
+.osv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--osv-mono);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--osv-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.osv-check input { accent-color: var(--osv-teal); }
+
+/* ── Terminal log output ────────────────────────────────────── */
+.osv-terminal {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--osv-teal-border);
+  border-radius: 3px;
+  padding: 14px 16px;
+  height: 340px;
+  overflow-y: auto;
+  font-family: var(--osv-mono);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.osv-term-line { color: var(--osv-text); white-space: pre-wrap; word-break: break-word; }
+.osv-term-line--done { color: var(--osv-teal); }
+.osv-term-line--error { color: var(--osv-danger); }
+.osv-term-empty { color: var(--osv-text-dim); font-style: italic; }

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { OsavaHeader } from "./OsavaUI";
 
 type LogLine = {
   id: number;
@@ -10,16 +11,13 @@ type LogLine = {
 type AvConsoleProps = {
   onScanComplete: () => void;
 };
-  
 
 export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [updating, setUpdating] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [verboseScan, setVerboseScan] = useState(false);
-  const [scanPath, setScanPath] = useState(
-    `C:\\Users\\${window.navigator.platform.includes("Win") ? "" : ""}` 
-  );
+  const [scanPath, setScanPath] = useState("");
   const logCounter = useRef(0);
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -28,10 +26,10 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   }, [logs]);
 
   useEffect(() => {
-  fetch("http://localhost:4000/api/homedir")
-    .then(r => r.json())
-    .then(d => setScanPath(d.homedir + "\\Downloads"));
-}, []);
+    fetch("http://localhost:4000/api/homedir")
+      .then(r => r.json())
+      .then(d => setScanPath(d.homedir + "\\Downloads"));
+  }, []);
 
   function addLog(type: LogLine["type"], text: string) {
     setLogs(prev => [...prev, { id: logCounter.current++, type, text }]);
@@ -97,18 +95,18 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   }
 
   async function cancelScan() {
-    try{
-      await fetch("http://localhost:4000/api/av/cancelscan", {method: "POST"});
+    try {
+      await fetch("http://localhost:4000/api/av/cancelscan", { method: "POST" });
     } catch (err) {
       console.error("Error fetching cancel! message:", err);
-    } finally{
+    } finally {
       setScanning(false);
     }
   }
 
   async function pickupHolder() {
-    const selected = await open({directory:true, multiple:false});
-    if(selected){
+    const selected = await open({ directory: true, multiple: false });
+    if (selected) {
       setScanPath(selected as string);
     }
   }
@@ -116,54 +114,61 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   const busy = updating || scanning;
 
   return (
-    <div>
-      <h2>AV Console</h2>
+    <div className="osv-tab">
+      <OsavaHeader
+        eyebrow="Terminal"
+        status={scanning ? "Scanning" : updating ? "Updating" : "Operational"}
+        title="AV Console"
+        subtitle="Update definitions and run on-demand scans."
+      />
 
-      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
-        <button onClick={startUpdate} disabled={busy}>
-          {updating ? "Updating..." : "Update Definitions"}
+      <div className="osv-toolbar">
+        <button className="osv-btn" onClick={startUpdate} disabled={busy}>
+          {updating ? "Updating…" : "Update Definitions"}
         </button>
-        <button onClick={clearLogs} disabled={busy}>Clear</button>
-      </div>
-      <label>
-        <input 
-          type="checkbox"
-          checked={verboseScan}
-          onChange={e => setVerboseScan(e.target.checked)}
+        <button className="osv-btn" onClick={clearLogs} disabled={busy}>Clear</button>
+        <div className="osv-toolbar-spacer" />
+        <label className="osv-check">
+          <input
+            type="checkbox"
+            checked={verboseScan}
+            onChange={e => setVerboseScan(e.target.checked)}
           />
           Show all files
-      </label>
-      <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+        </label>
+      </div>
+
+      <div className="osv-field-row" style={{ marginBottom: 14 }}>
         <input
+          className="osv-input"
           value={scanPath}
           onChange={e => setScanPath(e.target.value)}
           placeholder="Path to scan"
-          style={{ flex: 1 }}
         />
-        <button onClick={startScan} disabled={busy}>
-          {scanning ? "Scanning..." : "Scan"}
-        </button>
-        {scanning && (
-        <button onClick={cancelScan}>Cancel</button>
-        )}  
-        <button onClick={pickupHolder} disabled={busy}>Browse</button>  
+        <button className="osv-btn" onClick={pickupHolder} disabled={busy}>Browse</button>
+        {scanning ? (
+          <button className="osv-btn osv-btn--danger" onClick={cancelScan}>Cancel</button>
+        ) : (
+          <button className="osv-btn osv-btn--primary" onClick={startScan} disabled={busy}>Scan</button>
+        )}
       </div>
 
-      <div style={{
-        background: "#111",
-        color: "#eee",
-        fontFamily: "monospace",
-        fontSize: "12px",
-        padding: "12px",
-        height: "300px",
-        overflowY: "auto",
-        borderRadius: "4px"
-      }}>
-        {logs.length === 0 && <span style={{ color: "#666" }}>Output will appear here...</span>}
+      <div className="osv-terminal">
+        {logs.length === 0 && (
+          <span className="osv-term-empty">Output will appear here…</span>
+        )}
         {logs.map(line => (
-          <div key={line.id} style={{
-            color: line.type === "error" ? "#f87" : line.type === "done" ? "#4f4" : "#eee"
-          }}>
+          <div
+            key={line.id}
+            className={
+              "osv-term-line" +
+              (line.type === "done"
+                ? " osv-term-line--done"
+                : line.type === "error"
+                  ? " osv-term-line--error"
+                  : "")
+            }
+          >
             {line.text}
           </div>
         ))}

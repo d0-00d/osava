@@ -30,18 +30,10 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
-  const [backendStatus, setBackendStatus] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState<InstallStatus | null>(null);
   const [hasHistory, setHasHistory] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
-  useEffect(() => {
-
-    fetch("http://localhost:4000/health")
-      .then(r => r.json())
-      .then(d => setBackendStatus(d.status))
-      .catch(() => setBackendStatus("offline"));
-  }, []);
 
   async function fetchInstallStatus() {
     try {
@@ -79,7 +71,6 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-wordmark">OSAVA</div>
-          <div className="sidebar-tagline">Open Source Antivirus</div>
           <div className="sidebar-tagline">Security Suite</div>
         </div>
 
@@ -97,12 +88,6 @@ function App() {
           ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <span className="sidebar-status-dot" style={{
-            background: backendStatus === "ok" ? "var(--status-ok)" : "var(--status-threat)"
-          }} />
-          {backendStatus === "ok" ? "backend online" : "backend offline"}
-        </div>
       </aside>
 
       <main className="content">

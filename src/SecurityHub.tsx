@@ -1,5 +1,5 @@
 import { useState } from "react";
-
+import { OsavaHeader, StatusPill } from "./OsavaUI";
 
 type InstallStatus = {
   installed: boolean;
@@ -35,6 +35,7 @@ export default function SecurityHub({ status, onInstallChange }: SecurityHubProp
       setInstalling(false);
     }
   }
+
   async function handleUninstall() {
     setUninstall(true);
     setError(null);
@@ -54,31 +55,57 @@ export default function SecurityHub({ status, onInstallChange }: SecurityHubProp
     }
   }
 
-  if (!status) return <p>Loading...</p>;
+  const installed = !!status?.installed;
 
   return (
-    <div>
-      <h2>Security Hub</h2>
-      <div>
-        <h3>ClamAV</h3>
-        {status.installed ? (
-          <>
-            <p>Installed ({status.engine})</p>
-            <button onClick={handleUninstall} disabled={uninstall}>
-            {uninstall ? "Uninstalling..." : "Uninstall"}
-          </button>
-          </>
-        ) : (
-          <button onClick={handleInstall} disabled={installing}>
-            {installing ? "Installing..." : "Install"}
-          </button>
-        )}
-        {error && (
-          <p style={{ color: "var(--status-warn)", marginTop: 8, fontSize: 12 }}>
-            {error}
-          </p>
-        )}
-      </div>
+    <div className="osv-tab">
+      <OsavaHeader
+        eyebrow="Security Hub"
+        status={installed ? "Armed" : "Idle"}
+        title="Security Hub"
+        subtitle="Install and manage antivirus engines."
+      />
+
+      {!status ? (
+        <p className="osv-muted">Loading…</p>
+      ) : (
+        <div className="osv-panel">
+          <div className="osv-record-head">
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="osv-record-path">ClamAV</span>
+              <span className="osv-record-meta" style={{ marginTop: 0 }}>
+                {installed
+                  ? `Open-source engine${status.installedAt ? ` · installed ${new Date(status.installedAt).toLocaleDateString()}` : ""}`
+                  : "Open-source antivirus engine"}
+              </span>
+            </div>
+            <StatusPill tone={installed ? "ok" : "neutral"}>
+              {installed ? "Installed" : "Not installed"}
+            </StatusPill>
+          </div>
+
+          <div style={{ marginTop: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            {installed ? (
+              <button className="osv-btn osv-btn--danger" onClick={handleUninstall} disabled={uninstall}>
+                {uninstall ? "Uninstalling…" : "Uninstall"}
+              </button>
+            ) : (
+              <button className="osv-btn osv-btn--primary" onClick={handleInstall} disabled={installing}>
+                {installing ? "Installing…" : "Install ClamAV"}
+              </button>
+            )}
+          </div>
+
+          {error && (
+            <div className="osv-result">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <StatusPill tone="warn">Notice</StatusPill>
+                <p style={{ margin: 0 }}>{error}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
