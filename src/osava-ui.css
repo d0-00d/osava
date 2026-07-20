@@ -1,0 +1,271 @@
+/* ─────────────────────────────────────────────────────────────
+   OSAVA design system — extracted from the Figma "OSAVA" export.
+   Reusable primitives for the main tab content (headers, panels,
+   buttons, inputs, status pills). Rebuilt to match, not imported
+   verbatim, so it stays responsive and maintainable.
+   ───────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --osv-teal: rgb(133, 213, 198);
+  --osv-teal-strong: rgb(170, 235, 220);
+  --osv-teal-dim: rgba(133, 213, 198, 0.1);
+  --osv-teal-border: rgba(51, 134, 121, 0.35);
+  --osv-panel: rgba(20, 19, 19, 0.8);
+  --osv-panel-raised: rgba(28, 27, 27, 0.85);
+  --osv-text: rgb(230, 225, 225);
+  --osv-text-secondary: rgb(202, 197, 202);
+  --osv-text-dim: rgba(202, 197, 202, 0.45);
+  --osv-danger: #f87171;
+  --osv-warn: #fb923c;
+  --osv-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --osv-display: "Pixelify Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+
+.osv-tab {
+  font-family: var(--osv-mono);
+  color: var(--osv-text);
+  max-width: 1000px;
+}
+
+/* ── Header block: eyebrow › status, big title, subtitle ─────── */
+.osv-header { margin-bottom: 28px; }
+
+.osv-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--osv-mono);
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--osv-text-secondary);
+  margin-bottom: 14px;
+}
+.osv-eyebrow-status { color: var(--osv-teal); }
+.osv-chevron { flex-shrink: 0; opacity: 0.8; }
+
+.osv-title {
+  font-family: var(--osv-display);
+  font-weight: 400;
+  font-size: 40px;
+  line-height: 44px;
+  letter-spacing: -1px;
+  color: var(--osv-text);
+  margin: 0;
+}
+.osv-subtitle {
+  font-family: var(--osv-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--osv-text-secondary);
+  margin: 8px 0 0;
+  max-width: 640px;
+}
+
+/* ── Panels ─────────────────────────────────────────────────── */
+.osv-panel {
+  background: var(--osv-panel);
+  border: 1px solid var(--osv-teal-border);
+  backdrop-filter: blur(4px);
+  border-radius: 3px;
+  padding: 20px;
+}
+.osv-panel + .osv-panel { margin-top: 14px; }
+
+.osv-panel-title {
+  font-family: var(--osv-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--osv-text-secondary);
+  margin: 0 0 14px;
+}
+
+.osv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+/* ── Labels ─────────────────────────────────────────────────── */
+.osv-label {
+  display: block;
+  font-family: var(--osv-mono);
+  font-size: 11px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--osv-text-secondary);
+}
+
+/* ── Inputs ─────────────────────────────────────────────────── */
+.osv-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-family: var(--osv-mono);
+  font-size: 13px;
+  color: var(--osv-text);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--osv-teal-border);
+  border-radius: 3px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.osv-input:focus { border-color: var(--osv-teal); }
+.osv-input::placeholder { color: var(--osv-text-dim); }
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.osv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-family: var(--osv-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--osv-text);
+  background: transparent;
+  border: 1px solid var(--osv-teal-border);
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.osv-btn:hover:not(:disabled) { border-color: var(--osv-teal); color: var(--osv-teal); }
+.osv-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.osv-btn--primary {
+  background: var(--osv-teal-dim);
+  border-color: var(--osv-teal);
+  color: var(--osv-teal);
+}
+.osv-btn--primary:hover:not(:disabled) { background: rgba(133, 213, 198, 0.2); color: var(--osv-teal-strong); }
+
+.osv-btn--danger { border-color: rgba(248, 113, 113, 0.4); color: var(--osv-danger); }
+.osv-btn--danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.1); border-color: var(--osv-danger); color: var(--osv-danger); }
+
+/* ── Status pills ───────────────────────────────────────────── */
+.osv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--osv-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+.osv-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.osv-pill--ok { color: var(--osv-teal); background: var(--osv-teal-dim); }
+.osv-pill--bad { color: var(--osv-danger); background: rgba(248, 113, 113, 0.1); }
+.osv-pill--warn { color: var(--osv-warn); background: rgba(251, 146, 60, 0.1); }
+.osv-pill--neutral { color: var(--osv-text-secondary); background: rgba(202, 197, 202, 0.08); }
+
+/* ── Result / message blocks ────────────────────────────────── */
+.osv-result {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--osv-teal-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.osv-result p { color: var(--osv-text-secondary); font-size: 13px; margin: 0; line-height: 1.5; }
+
+.osv-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.osv-tag {
+  font-family: var(--osv-mono);
+  font-size: 11px;
+  color: var(--osv-text);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 2px;
+  padding: 2px 8px;
+  word-break: break-all;
+}
+
+/* ── Loading / empty states ─────────────────────────────────── */
+.osv-muted { color: var(--osv-text-secondary); font-size: 13px; }
+.osv-empty {
+  font-family: var(--osv-mono);
+  color: var(--osv-text-dim);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--osv-teal-border);
+  border-radius: 3px;
+}
+
+/* ── Dashboard stat cards ───────────────────────────────────── */
+.osv-stat {
+  background: var(--osv-panel-raised);
+  border: 1px solid var(--osv-teal-border);
+  border-radius: 3px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.osv-stat-name {
+  font-family: var(--osv-mono);
+  font-size: 13px;
+  color: var(--osv-text);
+  word-break: break-word;
+}
+.osv-stat-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* ── Scan history / archives records ────────────────────────── */
+.osv-record-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.osv-record-path {
+  font-family: var(--osv-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--osv-text);
+  word-break: break-all;
+}
+.osv-record-meta {
+  font-family: var(--osv-mono);
+  font-size: 11px;
+  color: var(--osv-text-dim);
+  margin-top: 6px;
+}
+
+/* ── Threat detections ──────────────────────────────────────── */
+.osv-threat-list { display: flex; flex-direction: column; gap: 10px; }
+.osv-threat {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--osv-panel-raised);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 3px;
+}
+.osv-threat-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.osv-threat-file {
+  font-family: var(--osv-mono);
+  font-size: 13px;
+  color: var(--osv-danger);
+  word-break: break-all;
+}

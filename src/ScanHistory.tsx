@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { OsavaHeader, StatusPill } from "./OsavaUI";
 
 type ScanRecord = {
   id: string;
@@ -10,11 +11,11 @@ type ScanRecord = {
   verbose: boolean;
 };
 
-const OUTCOME_COLORS: Record<ScanRecord["outcome"], string> = {
-  clean: "#4f4",
-  infected: "#f87",
-  cancelled: "#aaa",
-  error: "#fa4",
+const OUTCOME_TONE: Record<ScanRecord["outcome"], "ok" | "bad" | "warn" | "neutral"> = {
+  clean: "ok",
+  infected: "bad",
+  cancelled: "neutral",
+  error: "warn",
 };
 
 export default function ScanHistory() {
@@ -48,64 +49,50 @@ export default function ScanHistory() {
     return (diff / 1000).toFixed(1) + "s";
   }
 
-  if (loading) return <p>Loading history...</p>;
-
   return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-        <h2 style={{ margin: 0 }}>Scan History</h2>
-        <button onClick={fetchHistory}>Refresh</button>
+    <div className="osv-tab">
+      <OsavaHeader
+        eyebrow="Archives"
+        status="Log"
+        title="Scan History"
+        subtitle="Record of completed scans and detected threats."
+      />
+
+      <div style={{ marginBottom: 16 }}>
+        <button className="osv-btn" onClick={fetchHistory} disabled={loading}>
+          {loading ? "Loading…" : "Refresh"}
+        </button>
       </div>
 
-      {records.length === 0 && (
-        <p style={{ color: "#aaa" }}>No scan history yet. Run a scan to see results here.</p>
+      {!loading && records.length === 0 && (
+        <div className="osv-empty">No scan history yet. Run a scan to see results here.</div>
       )}
 
       {records.map(record => (
-        <div key={record.id} style={{
-          background: "#1a1a1a",
-          border: "1px solid #333",
-          borderRadius: "6px",
-          padding: "12px",
-          marginBottom: "10px",
-          fontFamily: "monospace",
-          fontSize: "13px",
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ color: "#eee", fontWeight: "bold", wordBreak: "break-all" }}>
-              {record.path}
-            </span>
-            <span style={{
-              color: OUTCOME_COLORS[record.outcome],
-              fontWeight: "bold",
-              marginLeft: "12px",
-              whiteSpace: "nowrap",
-            }}>
-              {record.outcome.toUpperCase()}
-            </span>
+        <div className="osv-panel" key={record.id}>
+          <div className="osv-record-head">
+            <span className="osv-record-path">{record.path}</span>
+            <StatusPill tone={OUTCOME_TONE[record.outcome]}>{record.outcome}</StatusPill>
           </div>
-
-          <div style={{ color: "#888", marginTop: "6px", fontSize: "11px" }}>
-            {new Date(record.startedAt).toLocaleString()} &nbsp;·&nbsp;
-            {formatDuration(record.startedAt, record.finishedAt)} &nbsp;·&nbsp;
-            {record.verbose ? "verbose" : "quick"} scan
+          <div className="osv-record-meta">
+            {new Date(record.startedAt).toLocaleString()} · {formatDuration(record.startedAt, record.finishedAt)} · {record.verbose ? "verbose" : "quick"} scan
           </div>
 
           {record.infectedFiles.length > 0 && (
-            <div style={{ marginTop: "8px" }}>
+            <div style={{ marginTop: 12 }}>
               <button
+                className="osv-btn osv-btn--danger"
+                style={{ padding: "6px 12px", fontSize: 11 }}
                 onClick={() => toggleExpanded(record.id)}
-                style={{ fontSize: "11px", cursor: "pointer" }}
               >
                 {expanded[record.id] ? "Hide" : "Show"} {record.infectedFiles.length} infected file{record.infectedFiles.length > 1 ? "s" : ""}
               </button>
-
               {expanded[record.id] && (
-                <ul style={{ margin: "6px 0 0 0", paddingLeft: "16px", color: "#f87" }}>
+                <div className="osv-tags" style={{ marginTop: 10 }}>
                   {record.infectedFiles.map((file, i) => (
-                    <li key={i}>{file}</li>
+                    <span className="osv-tag" key={i}>{file}</span>
                   ))}
-                </ul>
+                </div>
               )}
             </div>
           )}

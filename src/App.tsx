@@ -1,16 +1,17 @@
 import { useState, useEffect } from "react";
-import EmailCheck from "./EmailCheck";
 import Dashboard from "./Dashboard";
 import SecurityHub from "./SecurityHub";
 import AvConsole from "./AvConsole";
 import ScanHistory from "./ScanHistory";
+import Threats from "./Threats";
 import SplashScreen from "./SplashScreen";
 import PixelTransition from "./PixelTransition";
 import LetterGlitch from "./LetterGlitch";
 
 import "./App.css";
+import "./osava-ui.css";
 
-type Tab = "email" | "dashboard" | "hub" | "console" | "history";
+type Tab = "dashboard" | "hub" | "console" | "threats" | "history";
 
 type InstallStatus = {
   installed: boolean;
@@ -20,23 +21,15 @@ type InstallStatus = {
 };
 
 const NAV_ITEMS: { id: Tab; label: string }[] = [
-  { id: "email", label: "Email Check" },
   { id: "dashboard", label: "System Health" },
   { id: "hub", label: "Security Hub" },
   { id: "console", label: "AV Console" },
+  { id: "threats", label: "Threats" },
   { id: "history", label: "Scan History" },
 ];
 
-const PAGE_TITLES: Record<Tab, { title: string; subtitle: string }> = {
-  email: { title: "Email Check", subtitle: "Check if an email address appears in known data breaches" },
-  dashboard: { title: "System Health", subtitle: "Live protection status pulled from Windows Security Center" },
-  hub: { title: "Security Hub", subtitle: "Install and manage antivirus engines" },
-  console: { title: "AV Console", subtitle: "Update definitions and run on-demand scans" },
-  history: { title: "Scan History", subtitle: "Record of completed scans and detected threats" },
-};
-
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>("email");
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [backendStatus, setBackendStatus] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState<InstallStatus | null>(null);
   const [hasHistory, setHasHistory] = useState(false);
@@ -77,11 +70,9 @@ function App() {
 
   const visibleTabs = NAV_ITEMS.filter(item => {
     if (item.id === "console") return installStatus?.installed;
-    if (item.id === "history") return hasHistory;
+    if (item.id === "history" || item.id === "threats") return hasHistory;
     return true;
   });
-
-  const { title, subtitle } = PAGE_TITLES[activeTab] ?? PAGE_TITLES.email;
 
   const shell = (
     <div className="app-shell">
@@ -115,10 +106,6 @@ function App() {
       </aside>
 
       <main className="content">
-        <h1 className="page-title">{title}</h1>
-        <p className="page-subtitle">{subtitle}</p>
-
-        {activeTab === "email" && <EmailCheck />}
         {activeTab === "dashboard" && <Dashboard />}
         {activeTab === "hub" && (
           <SecurityHub
@@ -127,6 +114,7 @@ function App() {
           />
         )}
         {activeTab === "console" && <AvConsole onScanComplete={checkHistory} />}
+        {activeTab === "threats" && <Threats />}
         {activeTab === "history" && <ScanHistory />}
       </main>
     </div>
