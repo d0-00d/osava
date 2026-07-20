@@ -133,6 +133,7 @@ export default function SplashScreen({ onComplete }: SplashProps) {
 
     streamBoot();
 
+
     return () => {
       cancelled = true;
       eventSource?.close();
@@ -163,7 +164,7 @@ export default function SplashScreen({ onComplete }: SplashProps) {
         >
           <ASCIIText
             text="OSAVA"
-            enableWaves={false}
+            enableWaves={true}
             asciiFontSize={asciiSize}
             planeBaseHeight={14}
           />
@@ -201,12 +202,13 @@ export default function SplashScreen({ onComplete }: SplashProps) {
               hasHistory: false,
             })}
           >
-            Launch OSAVA
+            Launch DESU!!
           </button>
         )}
       </div>
+      <div className="splash-line"> ;)) </div>
 
-      <div className="splash-footer">OSAVA v1.0.0 // Security Suite</div>
+      <div className="splash-footer">OSAVA v1.0.0 // BEING gay is ok! desu</div>
     </div>
   );
 }
