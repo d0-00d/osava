@@ -36,10 +36,10 @@ export default function PixelTransition({
   secondContent,
   active,
   onComplete,
-  gridSize = 24,
-  pixelColor = "#0c0c0e",
-  animationStepDuration = 0.5,
-  holdDuration = 0.12,
+  gridSize = 4,
+  pixelColor = "#4d4d53",
+  animationStepDuration = 2.9,
+  holdDuration = 0.44,
 }: PixelTransitionProps) {
   const pixelGridRef = useRef<HTMLDivElement>(null);
   const firstRef = useRef<HTMLDivElement>(null);

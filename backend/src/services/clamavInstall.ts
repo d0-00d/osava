@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
+import { ensureClamConfig } from "./clamavConfig";
 
 const execAsync = promisify(exec);
 
@@ -49,31 +50,16 @@ try {
 }
 
 if ($null -eq $process) { exit 1 }
-$exitCode = $process.ExitCode
-
-if ($exitCode -eq 0 -or $exitCode -eq 3010) {
-  $dbDir = 'C:\\\\Program Files\\\\ClamAV\\\\database'
-  $confPath = 'C:\\\\Program Files\\\\ClamAV\\\\freshclam.conf'
-
-  if (-not (Test-Path $dbDir)) {
-    New-Item -ItemType Directory -Path $dbDir | Out-Null
-    $acl = Get-Acl $dbDir
-    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule("Users", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow")
-    $acl.SetAccessRule($rule)
-    Set-Acl $dbDir $acl
-  }
-
-  if (-not (Test-Path $confPath)) {
-    $content = 'DatabaseDirectory "C:\\\\Program Files\\\\ClamAV\\\\database"' + [char]10 + 'DatabaseMirror database.clamav.net' + [char]10 + 'UpdateLogFile "' + $env:USERPROFILE + '\\\\.osava\\\\freshclam.log"' + [char]10 + 'LogTime yes'
-    [System.IO.File]::WriteAllText($confPath, $content, [System.Text.UTF8Encoding]::new($false))
-  }
-}
-
-exit $exitCode
+exit $process.ExitCode
 `;
 
   await fs.writeFile(scriptPath, psScript, "utf-8");
   await execAsync(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`);
+
+  // Set up ClamAV's writable data (db dir + freshclam.conf) in the user profile.
+  // Done here in Node — not in the elevated script — so it never needs admin
+  // and can't silently fail on a locked-down Program Files.
+  ensureClamConfig();
 
   const productCode = await getInstalledProductCode("ClamAV");
 

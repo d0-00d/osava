@@ -12,8 +12,13 @@ type AvConsoleProps = {
   onScanComplete: () => void;
 };
 
+// Cap how many log lines stay in the DOM so huge outputs (verbose scans of
+// thousands of files) don't bog down rendering.
+const MAX_LOGS = 1000;
+
 export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   const [logs, setLogs] = useState<LogLine[]>([]);
+  const [progress, setProgress] = useState("");
   const [updating, setUpdating] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [verboseScan, setVerboseScan] = useState(false);
@@ -21,9 +26,15 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   const logCounter = useRef(0);
   const logEndRef = useRef<HTMLDivElement>(null);
 
+  // Batch incoming lines: many can arrive per frame (a verbose scan emits one
+  // per file). Buffer them and flush once per animation frame in a single
+  // setState, instead of forcing a re-render for every line.
+  const pending = useRef<LogLine[]>([]);
+  const flushScheduled = useRef(false);
+
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
+    logEndRef.current?.scrollIntoView({ behavior: "auto" });
+  }, [logs, progress]);
 
   useEffect(() => {
     fetch("http://localhost:4000/api/homedir")
@@ -31,12 +42,39 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
       .then(d => setScanPath(d.homedir + "\\Downloads"));
   }, []);
 
+  function flushLogs() {
+    flushScheduled.current = false;
+    const batch = pending.current;
+    if (batch.length === 0) return;
+    pending.current = [];
+    setLogs(prev => {
+      const next = prev.concat(batch);
+      return next.length > MAX_LOGS ? next.slice(next.length - MAX_LOGS) : next;
+    });
+  }
+
   function addLog(type: LogLine["type"], text: string) {
-    setLogs(prev => [...prev, { id: logCounter.current++, type, text }]);
+    pending.current.push({ id: logCounter.current++, type, text });
+    if (!flushScheduled.current) {
+      flushScheduled.current = true;
+      requestAnimationFrame(flushLogs);
+    }
+  }
+
+  // Route one streamed event: "progress" updates a single live line in place;
+  // everything else appends as a normal log line.
+  function handleEvent(type: string, data: string) {
+    if (type === "progress") {
+      setProgress(data);
+    } else {
+      addLog(type as LogLine["type"], data);
+    }
   }
 
   function clearLogs() {
+    pending.current = [];
     setLogs([]);
+    setProgress("");
   }
 
   function startUpdate() {
@@ -46,8 +84,9 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
 
     source.onmessage = (e) => {
       const { type, data } = JSON.parse(e.data);
-      addLog(type, data);
+      handleEvent(type, data);
       if (type === "done" || type === "error") {
+        setProgress("");
         source.close();
         setUpdating(false);
       }
@@ -82,13 +121,14 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
           if (!dataLine) continue;
           try {
             const { type, data } = JSON.parse(dataLine);
-            addLog(type, data);
+            handleEvent(type, data);
           } catch { /* partial chunk, skip */ }
         }
       }
     } catch (err) {
       addLog("error", "Scan request failed.");
     } finally {
+      setProgress("");
       setScanning(false);
       onScanComplete();
     }
@@ -154,7 +194,7 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
       </div>
 
       <div className="osv-terminal">
-        {logs.length === 0 && (
+        {logs.length === 0 && !progress && (
           <span className="osv-term-empty">Output will appear here…</span>
         )}
         {logs.map(line => (
@@ -172,6 +212,9 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
             {line.text}
           </div>
         ))}
+        {progress && (
+          <div className="osv-term-line" style={{ opacity: 0.7 }}>{progress}</div>
+        )}
         <div ref={logEndRef} />
       </div>
     </div>

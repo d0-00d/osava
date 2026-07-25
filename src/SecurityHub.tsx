@@ -56,12 +56,13 @@ export default function SecurityHub({ status, onInstallChange }: SecurityHubProp
   }
 
   const installed = !!status?.installed;
+  const busy = installing || uninstall;
 
   return (
     <div className="osv-tab">
       <OsavaHeader
         eyebrow="Security Hub"
-        status={installed ? "Armed" : "Idle"}
+        status={installing ? "Installing" : uninstall ? "Removing" : installed ? "Armed" : "Idle"}
         title="Security Hub"
         subtitle="Install and manage antivirus engines."
       />
@@ -79,8 +80,8 @@ export default function SecurityHub({ status, onInstallChange }: SecurityHubProp
                   : "Open-source antivirus engine"}
               </span>
             </div>
-            <StatusPill tone={installed ? "ok" : "neutral"}>
-              {installed ? "Installed" : "Not installed"}
+            <StatusPill tone={busy ? "warn" : installed ? "ok" : "neutral"}>
+              {installing ? "Installing…" : uninstall ? "Removing…" : installed ? "Installed" : "Not installed"}
             </StatusPill>
           </div>
 
@@ -95,6 +96,29 @@ export default function SecurityHub({ status, onInstallChange }: SecurityHubProp
               </button>
             )}
           </div>
+
+          {busy && (
+            <div className="osv-result">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span
+                  aria-hidden
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "#85d5c6",
+                    animation: "splash-pulse 1.2s infinite",
+                    flexShrink: 0,
+                  }}
+                />
+                <p style={{ margin: 0 }}>
+                  {installing ? "Installing ClamAV" : "Removing ClamAV"} — approve the
+                  Windows permission (UAC) prompt to continue. This can take a minute,
+                  and the window may look idle while it works.
+                </p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="osv-result">

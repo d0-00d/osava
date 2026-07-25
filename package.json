@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:backend": "cd backend && npm run compile",
+    "build:app": "npm run build:backend && npm run build",
     "preview": "vite preview",
     "tauri": "tauri"
   },
