@@ -15,7 +15,6 @@
 ## (✦_✦) Key Features
 
 - **Security Dashboard**: Monitor real-time Windows Security Center status, including active antivirus software and Windows Firewall states across Domain, Private, and Public profiles.
-- **Email Breach Checker**: Verify whether an email address has been compromised in a known data breach.
 - **Security Hub (ClamAV Manager)**: Check installation status, and download, install, or uninstall ClamAV via automated MSI setup.
 - **AV Console**: Run ClamAV definition updates (`freshclam`), perform custom directory or full-system scans (`clamscan`), and view live output logs.
 
