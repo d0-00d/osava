@@ -6,8 +6,8 @@
 
 ---
 
-## Releases are shipped spontaneously, with more features on the way...(*￣０￣)ノ
-
+## Releases are shipped spontaneously, with more features on the way...
+## (*￣０￣)ノ
 **CURRENT STAGE → ALPHA v0.1**
 
 ---
