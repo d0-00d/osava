@@ -20,15 +20,15 @@
 
 ```text
 osava/
-├── src/               # React + TypeScript Frontend UI
-├── backend/           # Standalone Express API backend (bundled via esbuild + pkg)
-├── src-tauri/         # Tauri v2 Rust application layer & installer bundle configuration
-│   ├── binaries/      # Compiled sidecar executable (osava-backend.exe)
-│   └── target/release/bundle/ # Generated .msi and .exe installers
-├── public/            # Static assets
-├── package.json       # Root scripts and frontend dependencies
-├── README.md          # Project documentation
-└── vite.config.ts     # Vite configuration
+├── src/                        # React + TypeScript Frontend UI
+├── backend/                    # Standalone Express API backend (bundled via esbuild + pkg)
+├── src-tauri/                  # Tauri v2 Rust application layer & installer bundle configuration
+│   ├── binaries/               # Compiled sidecar executable (osava-backend.exe)
+│   └── target/release/bundle/  # Generated .msi and .exe installers
+├── public/                     # Static assets
+├── package.json                # Root scripts and frontend dependencies
+├── README.md                   # Project documentation
+└── vite.config.ts              # Vite configuration
 ```
 
 ---
