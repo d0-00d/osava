@@ -7,6 +7,10 @@
 
 ---
 
+## RELEASES WILL BE SPONTAENEOUS, AND MORE FEATURES WILL BE ADDED, CURRENT STAGE -> ALPHA.V.01
+
+---
+
 ## (✦_✦) Key Features
 
 - **Security Dashboard**: Monitor real-time Windows Security Center status including active Antivirus software and Windows Firewall states across Domain, Private, and Public profiles.
