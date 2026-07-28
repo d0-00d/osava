@@ -1,5 +1,6 @@
-# Osava - open sourec anti virus application (<- honestly a platform would be a better word but idk)
+# Osava - open source anti virus application 
 
+(**<- honestly a platform would be a better word but idk**)
 **Osava** is a modern Windows desktop security dashboard built with [Tauri v2](https://tauri.app/), React 19, TypeScript, and Express. It provides system security monitoring, email breach lookups, ClamAV antivirus management, and custom scan/definition update workflows in a desktop interface.
 
 ---
