@@ -2,7 +2,7 @@
 
 *(Honestly, "platform" might be the more accurate word — but we'll see.)*
 
-**Osava** is a modern Windows desktop security dashboard built with [Tauri v2](https://tauri.app/), React 19, TypeScript, and Express. It provides system security monitoring, email breach lookups, ClamAV antivirus management, and custom scan/definition update workflows in a desktop interface.
+**Osava** is a modern Windows desktop security dashboard built with [Tauri v2](https://tauri.app/), React 19, TypeScript, and Express. It provides system security monitoring, ClamAV antivirus management, and custom scan/definition update workflows in a desktop interface.
 
 ---
 
@@ -131,7 +131,6 @@ The internal Express backend (listening on `http://localhost:4000`) exposes:
 
 - `GET /health` — Health check status
 - `GET /api/system-status` — Antivirus and firewall status via PowerShell `Get-CimInstance`
-- `GET /api/check-email/:email` — Email breach check integration
 - `GET /api/install-status` — ClamAV installation check (`~\.osava\install-status.json`)
 - `POST /api/install-status` — Trigger ClamAV MSI installer download and execution
 - `POST /api/uninstall` — Trigger ClamAV uninstallation
