@@ -1,111 +1,136 @@
-# Osava
+# Osava - Windows Security Dashboard
 
-Osava is a Windows-focused desktop security dashboard built with Tauri, React, and TypeScript. It combines a local backend service with a React frontend to provide:
+**Osava** is a modern Windows desktop security dashboard built with [Tauri v2](https://tauri.app/), React 19, TypeScript, and Express. It provides system security monitoring, email breach lookups, ClamAV antivirus management, and custom scan/definition update workflows in a desktop interface.
 
-- system protection status monitoring (antivirus and firewall)
-- email breach checking
-- ClamAV installation/uninstallation management
-- antivirus definition updates and file scanning via an AV console
+---
 
-## Project Structure
+## 🌟 Key Features
 
-- `/src` — React frontend application
-- `/backend` — standalone Node/Express API used by the frontend
-- `/src-tauri` — Tauri configuration and Rust runtime files
-- `/public` — static assets for the frontend
+- **🛡️ Security Dashboard**: Monitor real-time Windows Security Center status including active Antivirus software and Windows Firewall states across Domain, Private, and Public profiles.
+- **✉️ Email Breach Checker**: Verify if email addresses have been compromised in data breaches.
+- **📦 Security Hub (ClamAV Manager)**: Check installation status, download, install, or uninstall ClamAV directly through MSI setup automation.
+- **💻 AV Console**: Perform ClamAV definition updates (`freshclam`), run custom directory or system scans (`clamscan`), and view live output logs.
+- **⚡ Integrated Sidecar Backend**: Bundles a standalone Node/Express backend (`osava-backend.exe`) directly into the Tauri desktop package.
 
-## Features
+---
 
-- `Dashboard` shows Windows Security Center antivirus and firewall status
-- `EmailCheck` queries a breach-check API for a supplied email address
-- `SecurityHub` installs or uninstalls ClamAV and tracks install state
-- `AvConsole` updates definitions, launches scans, and streams console logs
-- local backend health and install status endpoints consumed by the frontend
+## 📁 Repository Structure
 
-## Requirements
+```text
+osava/
+├── src/               # React + TypeScript Frontend UI
+├── backend/           # Standalone Express API backend (bundled via esbuild + pkg)
+├── src-tauri/         # Tauri v2 Rust application layer & installer bundle configuration
+│   ├── binaries/      # Compiled sidecar executable (osava-backend.exe)
+│   └── target/release/bundle/ # Generated .msi and .exe installers
+├── public/            # Static assets
+├── package.json       # Root scripts and frontend dependencies
+├── README.md          # Project documentation
+└── vite.config.ts     # Vite configuration
+```
 
-- Node.js 20+ (or compatible LTS)
-- Yarn or npm
-- Rust toolchain (for Tauri desktop builds)
-- Windows 10/11 for full security center and ClamAV integration
+---
 
-## Setup
+## 🚀 Installation & Pre-built Installers
 
-1. Install dependencies for the root app:
+When compiled, Osava produces standalone Windows installer packages located in `src-tauri/target/release/bundle/`:
 
+| Installer Format | File Name | Location | Description |
+| :--- | :--- | :--- | :--- |
+| **MSI Package** | `osava_0.1.0_x64_en-US.msi` | `src-tauri/target/release/bundle/msi/` | Windows Installer package suitable for standard or enterprise deployment. |
+| **Executable Setup** | `osava_0.1.0_x64-setup.exe` | `src-tauri/target/release/bundle/nsis/` | NSIS interactive setup installer. |
+
+---
+
+## 🛠️ Requirements & Development Setup
+
+### System Requirements
+
+- **OS**: Windows 10 or Windows 11 (required for Windows Security Center & PowerShell queries)
+- **Node.js**: v20+ LTS
+- **Package Manager**: `npm`
+- **Rust Toolchain**: Required for compiling Tauri desktop application (`cargo`, `rustc`)
+
+### Step-by-Step Setup
+
+1. **Clone the repository and install frontend dependencies:**
    ```bash
-   cd c:\Users\username\osava
+   git clone https://github.com/your-repo/osava.git
+   cd osava
    npm install
    ```
 
-2. Install backend dependencies:
-
+2. **Install backend dependencies:**
    ```bash
    cd backend
    npm install
+   cd ..
    ```
 
-3. Ensure the backend is available on `http://localhost:4000` before using the frontend.
+---
 
-## Running Locally
+## 💻 Running the App Locally
 
-### Start the backend
+### Running in Development Mode
+
+To run the full desktop application in development mode with hot-reloading:
 
 ```bash
+# From the root directory:
+npm run dev
+```
+
+To run backend and frontend web servers separately:
+
+```bash
+# Terminal 1: Backend API (http://localhost:4000)
 cd backend
 npm run dev
-```
 
-The backend exposes these key endpoints:
-
-- `GET /health` — health check
-- `GET /api/system-status` — antivirus/firewall status
-- `GET /api/check-email/:email` — email breach lookup
-- `GET /api/install-status` — ClamAV install state
-- `POST /api/install-status` — install ClamAV
-- `POST /api/uninstall` — uninstall ClamAV
-- various `/api/av/*` endpoints for scan/update operations
-
-### Start the frontend
-
-```bash
-cd c:\Users\username\osava
+# Terminal 2: Frontend Vite App (http://localhost:1420)
+cd ..
 npm run dev
 ```
 
-Then open the Vite development URL shown in the terminal.
+---
 
-## Tauri Build
+## 🏗️ Building `.msi` and `.exe` Installers
 
-Once the frontend and backend are ready, build the desktop app with:
+To compile the backend sidecar executable, build the React frontend production bundle, and generate both `.msi` and `.exe` installers, run:
 
 ```bash
-npm run build
 npm run tauri build
 ```
 
-> Note: Tauri packaging may require additional Rust components and platform-specific setup.
+### What happens during `npm run tauri build`:
 
-## Usage
+1. **Backend Compilation (`npm run build:backend`)**:
+   - `esbuild` bundles `backend/src/index.ts` into `dist/backend.cjs`.
+   - `@yao-pkg/pkg` compiles `backend.cjs` into `src-tauri/binaries/osava-backend-x86_64-pc-windows-msvc.exe`.
+2. **Frontend Build (`npm run build`)**:
+   - `tsc` checks TypeScript types and `vite build` bundles the frontend into `dist/`.
+3. **Tauri Bundling (`tauri build`)**:
+   - Rust compiles the native wrapper (`src-tauri`).
+   - WiX toolset compiles `osava_0.1.0_x64_en-US.msi`.
+   - NSIS toolset compiles `osava_0.1.0_x64-setup.exe`.
 
-- Use the navigation buttons to switch between Email Check, Dashboard, Security Hub, and AV Console.
-- `EmailCheck` requires a valid email address and uses the backend API to check breaches.
-- `Dashboard` queries Windows Security Center and firewall profiles.
-- `SecurityHub` installs or removes ClamAV and stores install status in `~\.osava\install-status.json`.
-- `AV Console` can update definitions, run scans, and display log output.
+---
 
-## Notes
+## 🛰️ Backend API Endpoints
 
-- The project is currently tailored for Windows and uses PowerShell commands for system queries and installer management.
-- ClamAV installation is performed via MSI and requires administrator privileges.
-- The frontend expects the backend at `http://localhost:4000`.
+The internal Express backend (listening on `http://localhost:4000`) exposes:
 
-## Development Tips
+- `GET /health` — Health check status
+- `GET /api/system-status` — Antivirus and Firewall status via PowerShell `Get-CimInstance`
+- `GET /api/check-email/:email` — Email breach check integration
+- `GET /api/install-status` — ClamAV installation check (`~\.osava\install-status.json`)
+- `POST /api/install-status` — Trigger ClamAV MSI installer download and execution
+- `POST /api/uninstall` — Trigger ClamAV uninstallation
+- `POST /api/av/update` — Execute `freshclam` definition update
+- `POST /api/av/scan` — Execute `clamscan` on target paths
 
-- Keep the backend running while testing React UI flows.
-- If the backend cannot be reached, check that `npm run dev` is active in `/backend`.
-- Use the `SecurityHub` tab to refresh ClamAV install status after installing or uninstalling.
+---
 
-## License
+## 📝 License
 
-This repository does not specify a license. Add one if you intend to share or publish the project.
+This project is open-source. See license details if applicable.
