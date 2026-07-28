@@ -49,6 +49,7 @@ When compiled, Osava produces standalone Windows installer packages located in `
 ### System Requirements
 
 - **OS**: Windows 10 or Windows 11 (required for Windows Security Center & PowerShell queries)
+- **hardware**: can prolly run on a raspberry pi but idk havent tested
 - **Node.js**: v20+ LTS
 - **Package Manager**: `npm`
 - **Rust Toolchain**: Required for compiling Tauri desktop application (`cargo`, `rustc`)
@@ -136,3 +137,5 @@ The internal Express backend (listening on `http://localhost:4000`) exposes:
 ## License
 
 This project is open-source. See license details if applicable.
+
+## ;))
