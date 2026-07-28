@@ -1,20 +1,19 @@
-# Osava - Windows Security Dashboard
+# Osava - open sourec anti virus application (<- honestly a platform would be a better word but idk)
 
 **Osava** is a modern Windows desktop security dashboard built with [Tauri v2](https://tauri.app/), React 19, TypeScript, and Express. It provides system security monitoring, email breach lookups, ClamAV antivirus management, and custom scan/definition update workflows in a desktop interface.
 
 ---
 
-## 🌟 Key Features
+## (✦_✦) Key Features
 
-- **🛡️ Security Dashboard**: Monitor real-time Windows Security Center status including active Antivirus software and Windows Firewall states across Domain, Private, and Public profiles.
-- **✉️ Email Breach Checker**: Verify if email addresses have been compromised in data breaches.
-- **📦 Security Hub (ClamAV Manager)**: Check installation status, download, install, or uninstall ClamAV directly through MSI setup automation.
-- **💻 AV Console**: Perform ClamAV definition updates (`freshclam`), run custom directory or system scans (`clamscan`), and view live output logs.
-- **⚡ Integrated Sidecar Backend**: Bundles a standalone Node/Express backend (`osava-backend.exe`) directly into the Tauri desktop package.
+- **Security Dashboard**: Monitor real-time Windows Security Center status including active Antivirus software and Windows Firewall states across Domain, Private, and Public profiles.
+- **Email Breach Checker**: Verify if email addresses have been compromised in data breaches.
+- **Security Hub (ClamAV Manager)**: Check installation status, download, install, or uninstall ClamAV directly through MSI setup automation.
+- **AV Console**: Perform ClamAV definition updates (`freshclam`), run custom directory or system scans (`clamscan`), and view live output logs.
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```text
 osava/
@@ -31,7 +30,7 @@ osava/
 
 ---
 
-## 🚀 Installation & Pre-built Installers
+## Installation & Pre-built Installers
 
 When compiled, Osava produces standalone Windows installer packages located in `src-tauri/target/release/bundle/`:
 
@@ -42,7 +41,7 @@ When compiled, Osava produces standalone Windows installer packages located in `
 
 ---
 
-## 🛠️ Requirements & Development Setup
+## Requirements & Development Setup
 
 ### System Requirements
 
@@ -69,7 +68,7 @@ When compiled, Osava produces standalone Windows installer packages located in `
 
 ---
 
-## 💻 Running the App Locally
+## Running the App Locally
 
 ### Running in Development Mode
 
@@ -94,7 +93,7 @@ npm run dev
 
 ---
 
-## 🏗️ Building `.msi` and `.exe` Installers
+## Building `.msi` and `.exe` Installers
 
 To compile the backend sidecar executable, build the React frontend production bundle, and generate both `.msi` and `.exe` installers, run:
 
@@ -116,7 +115,7 @@ npm run tauri build
 
 ---
 
-## 🛰️ Backend API Endpoints
+## Backend API Endpoints
 
 The internal Express backend (listening on `http://localhost:4000`) exposes:
 
@@ -131,6 +130,6 @@ The internal Express backend (listening on `http://localhost:4000`) exposes:
 
 ---
 
-## 📝 License
+## License
 
 This project is open-source. See license details if applicable.
