@@ -7,7 +7,7 @@
 ---
 
 ## Releases are shipped spontaneously, with more features on the way...
-## (*￣０￣)ノ
+(*￣０￣)ノ
 **CURRENT STAGE → ALPHA v0.1**
 
 ---
