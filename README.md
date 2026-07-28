@@ -43,6 +43,7 @@ When compiled, Osava produces standalone Windows installer packages located in `
 | **Executable Setup** | `osava_0.1.0_x64-setup.exe` | `src-tauri/target/release/bundle/nsis/` | NSIS interactive setup installer. |
 
 ---
+**check releases if your lazy like me*** 
 
 ## Requirements & Development Setup
 
