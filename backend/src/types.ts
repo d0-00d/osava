@@ -1,11 +1,10 @@
-export type Engine = "clamav" | "kicomav";
-
 export type InstallStatus = {
   installed: boolean;
-  engine: Engine | null;   // was: "clamav" | "kicomav" | null
+  engine: "clamav" | null;
   installedAt: string | null;
   productCode: string | null;
 };
+
 export type ScanRecord = {
   id: string;
   path: string;

@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { OsavaHeader, StatusPill } from "./OsavaUI";
 
-type Engine = "clamav" | "kicomav";
-
 type InstallStatus = {
   installed: boolean;
   engine: string | null;
@@ -16,13 +14,11 @@ type SecurityHubProps = {
 };
 
 export default function SecurityHub({ status, onInstallChange }: SecurityHubProps) {
-  const installedEngine = status?.installed ? status.engine : null;
-
   return (
     <div className="osv-tab">
       <OsavaHeader
         eyebrow="Security Hub"
-        status={installedEngine ? "Armed" : "Idle"}
+        status={status?.installed ? "Armed" : "Idle"}
         title="Security Hub"
         subtitle="Install and manage antivirus engines."
       />
@@ -30,39 +26,27 @@ export default function SecurityHub({ status, onInstallChange }: SecurityHubProp
       {!status ? (
         <p className="osv-muted">Loading…</p>
       ) : (
-        <>
-          <EngineCard
-            engine="clamav"
-            label="ClamAV"
-            description="Open-source antivirus engine"
-            status={status}
-            blockedByOther={installedEngine !== null && installedEngine !== "clamav"}
-            onInstallChange={onInstallChange}
-          />
-          <EngineCard
-            engine="kicomav"
-            label="KicomAV"
-            description="Signature-based scanner"
-            status={status}
-            blockedByOther={installedEngine !== null && installedEngine !== "kicomav"}
-            onInstallChange={onInstallChange}
-          />
-        </>
+        <EngineCard
+          engine="clamav"
+          label="ClamAV"
+          description="Open-source antivirus engine"
+          status={status}
+          onInstallChange={onInstallChange}
+        />
       )}
     </div>
   );
 }
 
 type EngineCardProps = {
-  engine: Engine;
+  engine: "clamav";
   label: string;
   description: string;
   status: InstallStatus;
-  blockedByOther: boolean;
   onInstallChange: () => void;
 };
 
-function EngineCard({ engine, label, description, status, blockedByOther, onInstallChange }: EngineCardProps) {
+function EngineCard({ engine, label, description, status, onInstallChange }: EngineCardProps) {
   const [installing, setInstalling] = useState(false);
   const [uninstalling, setUninstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,12 +117,7 @@ function EngineCard({ engine, label, description, status, blockedByOther, onInst
             {uninstalling ? `Uninstalling ${label}` : `Uninstall ${label}`}
           </button>
         ) : (
-          <button
-            className="osv-btn osv-btn--primary"
-            onClick={handleInstall}
-            disabled={installing || blockedByOther}
-            title={blockedByOther ? "Uninstall the other engine first" : undefined}
-          >
+          <button className="osv-btn osv-btn--primary" onClick={handleInstall} disabled={installing}>
             {installing ? `Installing ${label}` : `Install ${label}`}
           </button>
         )}

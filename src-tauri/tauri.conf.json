@@ -27,9 +27,6 @@
     "externalBin": [
       "binaries/osava-backend"
     ],
-    "resources": {
-      "vendor/k2.exe": "kicomav/k2.exe"
-    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
