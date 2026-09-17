@@ -1,8 +1,6 @@
 import { spawn, ChildProcess } from "node:child_process";
-import { CLAMAV_DIR, CLAMDB_DIR, FRESHCLAM_CONF, currentScan } from "../config";
-import { appendHistoryRecord} from "./statusFile";
+import { CLAMAV_DIR, FRESHCLAM_CONF, currentScan } from "../config";
 import { ensureClamConfig } from "./clamavConfig";
-import type { ScanRecord } from "../types";
 
 /**
  * Turns a child process's raw stdout/stderr into clean events. Handles two
@@ -91,93 +89,6 @@ export function updateDefinitions(
   return freshclam;
 }
 
-export function startScan(
-  scanPath: string,
-  verbose: boolean,
-  onEvent: (type: string, data: string) => void,
-  onEnd: (code: number | null) => void
-): ChildProcess {
-  const args = [
-    "--database", CLAMDB_DIR,
-    "--recursive",
-    "--max-filesize=25M",
-    "--max-scansize=100M",
-    scanPath
-  ];
-  if (!verbose) args.splice(2, 0, "--infected");
-
-  onEvent("log", `Starting scan of: ${scanPath}`);
-
-  // Make sure the db dir exists so clamscan can load definitions.
-  try {
-    ensureClamConfig();
-  } catch (e: any) {
-    onEvent("error", `Failed to prepare ClamAV config: ${e.message}`);
-  }
-
-  const startAt = new Date().toISOString();
-  const infectedFiles: string[] = [];
-  const clamscan = spawn(
-    `${CLAMAV_DIR}\\clamscan.exe`, args,
-    { shell: false }
-  );
-  currentScan.currentScan = clamscan;
-
-  clamscan.stdout.on("data", (chunk) => {
-    chunk.toString().split("\n")
-      .filter((l: string) => l.trim())
-      .forEach((line: string) => {
-        const isInfected = line.includes("FOUND");
-        onEvent(isInfected ? "error" : "log", line);
-        if (isInfected) {
-          const filename = line.substring(0, line.lastIndexOf(":")).trim();
-          if (filename) {
-            infectedFiles.push(filename);
-          }
-        }
-      });
-  });
-
-  clamscan.stderr.on("data", (chunk) => {
-    chunk.toString().split("\n")
-      .filter((l: string) => l.trim())
-      .forEach((line: string) => onEvent("log", line));
-  });
-
-  let heartbeat: NodeJS.Timeout | null = null;
-  if (!verbose) {
-    heartbeat = setInterval(() => onEvent("log", "Scanning..."), 3000);
-  }
-
-  clamscan.on("close", async (code) => {
-  if (heartbeat) clearInterval(heartbeat);
-  
-  const record: ScanRecord = {
-    id: Date.now().toString(),
-    path: scanPath,
-    startedAt: new Date().toISOString(),
-    finishedAt: new Date().toISOString(),
-    outcome: code === null ? "cancelled" : code === 0 ? "clean" : code === 1 ? "infected" : "error",
-    infectedFiles,
-    verbose,
-  };
-  await appendHistoryRecord(record);
-  
-  if (code === null) {
-    onEvent("log", "Scan cancelled.");
-  } else if (code === 0) {
-    onEvent("done", "Scan complete. No threats found.");
-  } else if (code === 1) {
-    onEvent("error", "Scan complete. Threats were found!");
-  } else {
-    onEvent("error", `Scan exited with code ${code}`);
-  }
-  
-  currentScan.currentScan = null;
-  onEnd(code);
-});
-return clamscan;
-}
 export function cancelScan(): { success: boolean; error?: string; message?: string } {
   if (currentScan.currentScan === null) {
     return {

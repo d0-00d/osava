@@ -1,8 +1,10 @@
 import { spawn, ChildProcess } from "node:child_process";
 import path from "node:path";
-import { CLAMAV_DIR, FRESHCLAM_CONF, currentScan } from "../config";
+import { CLAMAV_DIR, CLAMDB_DIR, FRESHCLAM_CONF, currentScan } from "../config";
 import { ensureClamConfig } from "./clamavConfig";
 import { makeLineHandler } from "./avService";
+import { appendHistoryRecord } from "./statusFile";
+import type { ScanRecord } from "../types";
 
 /**
  * Only these binaries can be run, and only from CLAMAV_DIR. The console takes
@@ -90,12 +92,47 @@ export function getPresetCommands() {
   ];
 }
 
+/**
+ * The Scan button's command line. Built here because the database directory is
+ * server-side knowledge, and echoing it to the console keeps a button honest:
+ * it's the same string you could have typed yourself.
+ */
+export function buildScanCommand(scanPath: string, verbose: boolean): string {
+  const flags = [
+    `--database "${CLAMDB_DIR}"`,
+    "--recursive",
+    "--max-filesize=25M",
+    "--max-scansize=100M",
+  ];
+  if (!verbose) flags.push("--infected");
+  return `clamscan ${flags.join(" ")} "${scanPath}"`;
+}
+
+// Flags that make clamscan print something and exit without scanning, so a run
+// with one of them shouldn't land in scan history.
+const INFO_ONLY_FLAGS = new Set(["--version", "-V", "--help", "-h"]);
+
+/**
+ * clamscan's usage is `clamscan [options] [target]`, so the scanned path is the
+ * final argument. A hand-typed command can end on a flag instead, in which case
+ * clamscan falls back to the working directory and so do we.
+ */
+function scanTargetFrom(args: string[]): string {
+  const last = args[args.length - 1];
+  return last && !last.startsWith("-") ? last : ".";
+}
+
 export function runCommand(
   line: string,
   onEvent: (type: string, data: string) => void,
   onEnd: (code: number | null) => void
 ): ChildProcess {
-  const { binary, args } = resolveCommand(line);
+  const { binary, args, name } = resolveCommand(line);
+
+  // Any clamscan run is recorded, whether it came from the button or was typed.
+  const isScan = name === "clamscan" && !args.some((a) => INFO_ONLY_FLAGS.has(a));
+  const infectedFiles: string[] = [];
+  const startedAt = new Date().toISOString();
 
   // Idempotent, and self-heals a db dir/conf that was never created.
   try {
@@ -109,7 +146,15 @@ export function runCommand(
   const child = spawn(binary, args, { shell: false });
   currentScan.currentScan = child;
 
-  const onLog = (l: string) => onEvent("log", l);
+  const onLog = (l: string) => {
+    if (isScan && l.includes("FOUND")) {
+      const filename = l.substring(0, l.lastIndexOf(":")).trim();
+      if (filename) infectedFiles.push(filename);
+      onEvent("error", l);
+    } else {
+      onEvent("log", l);
+    }
+  };
   const onProgress = (l: string) => onEvent("progress", l);
   child.stdout.on("data", makeLineHandler(onLog, onProgress));
   child.stderr.on("data", makeLineHandler(onLog, onProgress));
@@ -125,13 +170,32 @@ export function runCommand(
     );
   });
 
-  child.on("close", (code) => {
+  child.on("close", async (code) => {
     currentScan.currentScan = null;
+
+    if (isScan && !failedToStart) {
+      const record: ScanRecord = {
+        id: Date.now().toString(),
+        path: scanTargetFrom(args),
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        outcome:
+          code === null ? "cancelled" : code === 0 ? "clean" : code === 1 ? "infected" : "error",
+        infectedFiles,
+        verbose: !args.includes("--infected"),
+      };
+      await appendHistoryRecord(record);
+    }
+
     // The error handler already said why; a raw exit code adds only noise.
     if (failedToStart) {
       onEvent("done", "");
     } else if (code === null) {
-      onEvent("log", "Command cancelled.");
+      onEvent("log", isScan ? "Scan cancelled." : "Command cancelled.");
+    } else if (isScan && code === 0) {
+      onEvent("done", "Scan complete. No threats found.");
+    } else if (isScan && code === 1) {
+      onEvent("error", "Scan complete. Threats were found!");
     } else if (code === 0) {
       onEvent("done", "Exited with code 0");
     } else {

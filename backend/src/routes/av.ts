@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { updateDefinitions, startScan, cancelScan } from "../services/avService";
-import { runCommand, getPresetCommands, CommandError } from "../services/shellService";
+import { updateDefinitions, cancelScan } from "../services/avService";
+import { runCommand, buildScanCommand, getPresetCommands, CommandError } from "../services/shellService";
 import { readHistoryFile } from "../services/statusFile";
 import fs from "node:fs/promises";
 import { CLAMDB_DIR, currentScan } from "../config";
@@ -69,6 +69,10 @@ router.get("/api/av/scan", (req, res) => {
     return;
   }
   const verbose = req.query.verbose === "true";
+  if (currentScan.currentScan) {
+    return res.status(409).json({ error: "Another command is already running.", code: "BUSY" });
+  }
+
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -77,14 +81,10 @@ router.get("/api/av/scan", (req, res) => {
     res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
   };
 
-  const clamscan = startScan(
-    scanPath,
-    verbose,
-    sendEvent,
-    () => res.end()
-  );
+  // Same runner as a typed command — the button just doesn't make you type it.
+  const clamscan = runCommand(buildScanCommand(scanPath, verbose), sendEvent, () => res.end());
 
-  req.on("close", () => clamscan.kill());
+  res.on("close", () => clamscan.kill());
 });
 
 router.post("/api/av/cancelscan", (req, res) => {

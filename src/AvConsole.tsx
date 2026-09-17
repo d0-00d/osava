@@ -4,7 +4,7 @@ import { OsavaHeader } from "./OsavaUI";
 
 type LogLine = {
   id: number;
-  type: "log" | "done" | "error";
+  type: "log" | "done" | "error" | "command";
   text: string;
 };
 
@@ -19,12 +19,14 @@ const MAX_LOGS = 1000;
 export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [progress, setProgress] = useState("");
-  const [updating, setUpdating] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [verboseScan, setVerboseScan] = useState(false);
   const [scanPath, setScanPath] = useState("");
   const logCounter = useRef(0);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [running, setRunning] = useState(false);
+  const [input, setInput] = useState("");
+  const [presets, setPresets] = useState<{ id: string; label: string; command: string }[]>([]);
 
   // Batch incoming lines: many can arrive per frame (a verbose scan emits one
   // per file). Buffer them and flush once per animation frame in a single
@@ -40,6 +42,15 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
     fetch("http://localhost:4000/api/homedir")
       .then(r => r.json())
       .then(d => setScanPath(d.homedir + "\\Downloads"));
+  }, []);
+
+  // The backend owns the exact command strings (it knows the config paths), so
+  // a button is just a command you could have typed yourself.
+  useEffect(() => {
+    fetch("http://localhost:4000/api/av/commands")
+      .then(r => r.json())
+      .then(setPresets)
+      .catch(() => setPresets([]));
   }, []);
 
   function flushLogs() {
@@ -77,28 +88,6 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
     setProgress("");
   }
 
-  function startUpdate() {
-    clearLogs();
-    setUpdating(true);
-    const source = new EventSource("http://localhost:4000/api/av/update-definitions");
-
-    source.onmessage = (e) => {
-      const { type, data } = JSON.parse(e.data);
-      handleEvent(type, data);
-      if (type === "done" || type === "error") {
-        setProgress("");
-        source.close();
-        setUpdating(false);
-      }
-    };
-
-    source.onerror = () => {
-      addLog("error", "Connection to backend lost.");
-      source.close();
-      setUpdating(false);
-    };
-  }
-
   async function startScan() {
     clearLogs();
     setScanning(true);
@@ -106,31 +95,72 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
       const response = await fetch(
         `http://localhost:4000/api/av/scan?path=${encodeURIComponent(scanPath)}&verbose=${verboseScan}`
       );
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          const dataLine = line.replace(/^data: /, "").trim();
-          if (!dataLine) continue;
-          try {
-            const { type, data } = JSON.parse(dataLine);
-            handleEvent(type, data);
-          } catch { /* partial chunk, skip */ }
-        }
-      }
+      await streamEvents(response);
     } catch (err) {
       addLog("error", "Scan request failed.");
     } finally {
       setProgress("");
       setScanning(false);
       onScanComplete();
+    }
+  }
+
+  /**
+   * Read one streamed response into the log. A rejected request (400/409) sends
+   * a JSON error instead of a stream, so that's surfaced rather than fed to the
+   * reader, which would chew through it silently.
+   */
+  async function streamEvents(response: Response) {
+    if (!response.ok) {
+      const data = await response.json();
+      addLog("error", data.error || "Command failed");
+      return;
+    }
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const dataLine = line.replace(/^data: /, "").trim();
+        if (!dataLine) continue;
+        try {
+          const { type, data } = JSON.parse(dataLine);
+          handleEvent(type, data);
+        } catch { /* partial chunk, skip */ }
+      }
+    }
+  }
+
+  function submitInput() {
+    const cmd = input.trim();
+    if (!cmd || running) return;
+    setInput("");
+    runCommand(cmd);
+  }
+
+  async function runCommand(cmd: string) {
+    setRunning(true);
+    try {
+      const response = await fetch("http://localhost:4000/api/av/exec", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: cmd }),
+      });
+      await streamEvents(response);
+    } catch (err) {
+      addLog("error", "Command request failed.");
+    } finally {
+      setProgress("");
+      setRunning(false);
+      // A typed clamscan is recorded in history too, so refresh it.
+      if (cmd.trimStart().startsWith("clamscan")) onScanComplete();
     }
   }
 
@@ -151,21 +181,29 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
     }
   }
 
-  const busy = updating || scanning;
+  const busy = scanning || running;
 
   return (
     <div className="osv-tab">
       <OsavaHeader
         eyebrow="Terminal"
-        status={scanning ? "Scanning" : updating ? "Updating" : "Operational"}
+        status={scanning ? "Scanning" : running ? "Running" : "Operational"}
         title="AV Console"
-        subtitle="Update definitions and run on-demand scans."
+        subtitle="Run ClamAV commands directly, or use a shortcut."
       />
 
       <div className="osv-toolbar">
-        <button className="osv-btn" onClick={startUpdate} disabled={busy}>
-          {updating ? "Updating…" : "Update Definitions"}
-        </button>
+        {presets.map(preset => (
+          <button
+            key={preset.id}
+            className="osv-btn"
+            onClick={() => runCommand(preset.command)}
+            disabled={busy}
+            title={preset.command}
+          >
+            {preset.label}
+          </button>
+        ))}
         <button className="osv-btn" onClick={clearLogs} disabled={busy}>Clear</button>
         <div className="osv-toolbar-spacer" />
         <label className="osv-check">
@@ -206,7 +244,9 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
                 ? " osv-term-line--done"
                 : line.type === "error"
                   ? " osv-term-line--error"
-                  : "")
+                  : line.type === "command"
+                    ? " osv-term-line--command"
+                    : "")
             }
           >
             {line.text}
@@ -216,6 +256,23 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
           <div className="osv-term-line" style={{ opacity: 0.7 }}>{progress}</div>
         )}
         <div ref={logEndRef} />
+      </div>
+
+      <div className="osv-field-row" style={{ marginTop: 10 }}>
+        <input
+          className="osv-input"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") submitInput(); }}
+          placeholder="clamscan --version"
+          disabled={busy}
+          spellCheck={false}
+        />
+        {running ? (
+          <button className="osv-btn osv-btn--danger" onClick={cancelScan}>Cancel</button>
+        ) : (
+          <button className="osv-btn osv-btn--primary" onClick={submitInput} disabled={busy}>Run</button>
+        )}
       </div>
     </div>
   );
