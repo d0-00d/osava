@@ -17,7 +17,7 @@ import type { ScanRecord } from "../types";
  * Returns a function to attach to a stream's "data" event. Give stdout and
  * stderr their own handler (own buffer) so they don't corrupt each other.
  */
-function makeLineHandler(
+export function makeLineHandler(
   onLog: (line: string) => void,
   onProgress: (line: string) => void
 ) {
@@ -29,7 +29,9 @@ function makeLineHandler(
     // Emit each completed (newline-terminated) line as a permanent log line.
     let nl: number;
     while ((nl = buffer.indexOf("\n")) !== -1) {
-      const raw = buffer.slice(0, nl);
+      // Drop CRLF's own \r first, or the redraw logic below would treat it as a
+      // progress redraw and slice the whole line away to nothing.
+      const raw = buffer.slice(0, nl).replace(/\r$/, "");
       buffer = buffer.slice(nl + 1);
       // A finished line may still carry \r redraws — keep only its final state.
       const cr = raw.lastIndexOf("\r");

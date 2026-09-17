@@ -1,10 +1,48 @@
 import { Router } from "express";
 import { updateDefinitions, startScan, cancelScan } from "../services/avService";
+import { runCommand, getPresetCommands, CommandError } from "../services/shellService";
 import { readHistoryFile } from "../services/statusFile";
 import fs from "node:fs/promises";
-import { CLAMDB_DIR } from "../config";
+import { CLAMDB_DIR, currentScan } from "../config";
 
 const router = Router();
+
+router.get("/api/av/commands", (_req, res) => {
+  res.json(getPresetCommands());
+});
+
+router.post("/api/av/exec", (req, res) => {
+  const command = typeof req.body?.command === "string" ? req.body.command.trim() : "";
+  if (!command) {
+    return res.status(400).json({ error: "No command provided." });
+  }
+  if (currentScan.currentScan) {
+    return res.status(409).json({ error: "Another command is already running.", code: "BUSY" });
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const sendEvent = (type: string, data: string) => {
+    res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+  };
+
+  let child;
+  try {
+    child = runCommand(command, sendEvent, () => res.end());
+  } catch (error: any) {
+    // A rejected command is normal console usage, not a server fault — report
+    // it in the stream so it lands in the terminal like any other output.
+    sendEvent("error", error instanceof CommandError ? error.message : "Failed to run command");
+    sendEvent("done", "");
+    return res.end();
+  }
+
+  // Must be res, not req: on a POST the request stream closes as soon as the
+  // body is read, which would kill the child immediately.
+  res.on("close", () => child.kill());
+});
 
 router.get("/api/av/update-definitions", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");

@@ -10,7 +10,16 @@ import bootRoutes from "./routes/boot";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// The console can run real AV binaries, so this API is an code-execution
+// surface. Without an origin check any page the user visits could drive it,
+// and without the loopback bind anyone on the LAN could too.
+const ALLOWED_ORIGINS = [
+  "http://localhost:1420", // vite dev server
+  "http://tauri.localhost", // packaged app (Windows)
+  "https://tauri.localhost",
+];
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
 
 app.use(systemRoutes);
@@ -18,4 +27,4 @@ app.use(installRoutes);
 app.use(avRoutes);
 app.use(bootRoutes);
 
-app.listen(4000, () => console.log("backend running on port 4000"));
+app.listen(4000, "127.0.0.1", () => console.log("backend running on 127.0.0.1:4000"));

@@ -6,6 +6,17 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 1420
+    },
+    {
+      "name": "konhrad-client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "C:/Users/Ayush/Documents/GitHub/test_repositery_1",
+        "run",
+        "dev:client"
+      ],
+      "port": 5173
     }
   ]
 }
