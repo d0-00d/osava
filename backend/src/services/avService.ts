@@ -1,6 +1,4 @@
-import { spawn, ChildProcess } from "node:child_process";
-import { CLAMAV_DIR, FRESHCLAM_CONF, currentScan } from "../config";
-import { ensureClamConfig } from "./clamavConfig";
+import { currentScan } from "../config";
 
 /**
  * Turns a child process's raw stdout/stderr into clean events. Handles two
@@ -51,42 +49,6 @@ export function makeLineHandler(
       }
     }
   };
-}
-
-export function updateDefinitions(
-  onEvent: (type: string, data: string) => void,
-  onEnd: (code: number | null) => void
-): ChildProcess {
-  onEvent("log", "Starting definitions update...");
-
-  // Make sure the db dir + freshclam.conf exist (self-heals a bad install).
-  try {
-    ensureClamConfig();
-  } catch (e: any) {
-    onEvent("error", `Failed to prepare ClamAV config: ${e.message}`);
-  }
-
-  const freshclam = spawn(
-    `${CLAMAV_DIR}\\freshclam.exe`,
-    [`--config-file=${FRESHCLAM_CONF}`],
-    { shell: false }
-  );
-
-  const onLog = (line: string) => onEvent("log", line);
-  const onProgress = (line: string) => onEvent("progress", line);
-  freshclam.stdout.on("data", makeLineHandler(onLog, onProgress));
-  freshclam.stderr.on("data", makeLineHandler(onLog, onProgress));
-
-  freshclam.on("close", (code) => {
-    if (code === 0) {
-      onEvent("done", "Definitions updated successfully!");
-    } else {
-      onEvent("error", `freshclam exited with code ${code}`);
-    }
-    onEnd(code);
-  });
-
-  return freshclam;
 }
 
 export function cancelScan(): { success: boolean; error?: string; message?: string } {

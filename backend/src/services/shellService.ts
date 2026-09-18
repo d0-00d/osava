@@ -133,6 +133,8 @@ export function runCommand(
   const isScan = name === "clamscan" && !args.some((a) => INFO_ONLY_FLAGS.has(a));
   const infectedFiles: string[] = [];
   const startedAt = new Date().toISOString();
+  let scannedDirs: number | undefined;
+  let scannedFiles: number | undefined;
 
   // Idempotent, and self-heals a db dir/conf that was never created.
   try {
@@ -147,6 +149,14 @@ export function runCommand(
   currentScan.currentScan = child;
 
   const onLog = (l: string) => {
+    if (isScan) {
+      // clamscan's SCAN SUMMARY reports the counts; nothing else knows them.
+      const dirs = l.match(/^Scanned directories:\s*(\d+)/);
+      if (dirs?.[1]) scannedDirs = Number(dirs[1]);
+      const files = l.match(/^Scanned files:\s*(\d+)/);
+      if (files?.[1]) scannedFiles = Number(files[1]);
+    }
+
     if (isScan && l.includes("FOUND")) {
       const filename = l.substring(0, l.lastIndexOf(":")).trim();
       if (filename) infectedFiles.push(filename);
@@ -183,6 +193,8 @@ export function runCommand(
           code === null ? "cancelled" : code === 0 ? "clean" : code === 1 ? "infected" : "error",
         infectedFiles,
         verbose: !args.includes("--infected"),
+        scannedDirs,
+        scannedFiles,
       };
       await appendHistoryRecord(record);
     }

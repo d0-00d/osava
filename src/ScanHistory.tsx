@@ -22,6 +22,9 @@ export default function ScanHistory() {
   const [records, setRecords] = useState<ScanRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchHistory();
@@ -37,6 +40,26 @@ export default function ScanHistory() {
       console.error("Failed to fetch history:", err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function clearHistory() {
+    setClearing(true);
+    setError(null);
+    try {
+      const response = await fetch("http://localhost:4000/api/av/history", { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json();
+        setError(data.error || "Could not clear history");
+        return;
+      }
+      setRecords([]);
+      setExpanded({});
+      setConfirmingClear(false);
+    } catch (err) {
+      setError("Could not reach the backend");
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -58,11 +81,43 @@ export default function ScanHistory() {
         subtitle="Record of completed scans and detected threats."
       />
 
-      <div style={{ marginBottom: 16 }}>
-        <button className="osv-btn" onClick={fetchHistory} disabled={loading}>
+      <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="osv-btn" onClick={fetchHistory} disabled={loading || clearing}>
           {loading ? "Loading…" : "Refresh"}
         </button>
+
+        {/* Clearing can't be undone, so it takes a second, deliberate click. */}
+        {!confirmingClear ? (
+          <button
+            className="osv-btn osv-btn--danger"
+            onClick={() => setConfirmingClear(true)}
+            disabled={loading || clearing || records.length === 0}
+          >
+            Clear history
+          </button>
+        ) : (
+          <>
+            <span className="osv-muted">
+              Delete all {records.length} record{records.length === 1 ? "" : "s"}? This can't be undone.
+            </span>
+            <button className="osv-btn osv-btn--danger" onClick={clearHistory} disabled={clearing}>
+              {clearing ? "Clearing…" : "Yes, delete"}
+            </button>
+            <button className="osv-btn" onClick={() => setConfirmingClear(false)} disabled={clearing}>
+              Cancel
+            </button>
+          </>
+        )}
       </div>
+
+      {error && (
+        <div className="osv-panel" style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <StatusPill tone="warn">Notice</StatusPill>
+            <p style={{ margin: 0 }}>{error}</p>
+          </div>
+        </div>
+      )}
 
       {!loading && records.length === 0 && (
         <div className="osv-empty">No scan history yet. Run a scan to see results here.</div>

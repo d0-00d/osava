@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { updateDefinitions, cancelScan } from "../services/avService";
+import { cancelScan } from "../services/avService";
 import { runCommand, buildScanCommand, getPresetCommands, CommandError } from "../services/shellService";
-import { readHistoryFile } from "../services/statusFile";
+import { readHistoryFile, clearHistoryFile } from "../services/statusFile";
 import fs from "node:fs/promises";
 import { CLAMDB_DIR, currentScan } from "../config";
 
@@ -42,23 +42,6 @@ router.post("/api/av/exec", (req, res) => {
   // Must be res, not req: on a POST the request stream closes as soon as the
   // body is read, which would kill the child immediately.
   res.on("close", () => child.kill());
-});
-
-router.get("/api/av/update-definitions", (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  const sendEvent = (type: string, data: string) => {
-    res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
-  };
-
-  const freshclam = updateDefinitions(
-    sendEvent,
-    () => res.end()
-  );
-
-  req.on("close", () => freshclam.kill());
 });
 
 router.get("/api/av/scan", (req, res) => {
@@ -104,6 +87,16 @@ router.get("/api/av/history", async(_req, res) => {
     res.status(500).json({ error: "Failed to read history file." });
   }
   });
+
+router.delete("/api/av/history", async (_req, res) => {
+  try {
+    await clearHistoryFile();
+    res.json({ success: true, message: "Scan history cleared" });
+  } catch (error) {
+    console.error("Error clearing history file:", error);
+    res.status(500).json({ error: "Failed to clear scan history" });
+  }
+});
 
 router.get("/definitions-status", async (_req, res) => {
   try {

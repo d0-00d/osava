@@ -6,7 +6,7 @@ import ScanHistory from "./ScanHistory";
 import Threats from "./Threats";
 import SplashScreen from "./SplashScreen";
 import PixelTransition from "./PixelTransition";
-import LetterGlitch from "./LetterGlitch";
+import PixelFlowBackground from "./PixelFlowBackground";
 
 import "./App.css";
 import "./osava-ui.css";
@@ -98,25 +98,23 @@ function App() {
             onInstallChange={fetchInstallStatus}
           />
         )}
-        {activeTab === "console" && <AvConsole onScanComplete={checkHistory} />}
+        <div hidden={activeTab !== "console"}>
+        <AvConsole onScanComplete={checkHistory} />
+        </div>
         {activeTab === "threats" && <Threats />}
         {activeTab === "history" && <ScanHistory />}
       </main>
     </div>
   );
 
-  // Faint animated LetterGlitch backdrop, fixed behind everything (splash + shell).
-  // The surfaces on top (.content/.sidebar/.splash-container) are translucent so
-  // it shows through — see App.css.
+  // Faint animated backdrop, fixed behind everything (splash + shell). The
+  // surfaces on top (.content/.sidebar/.splash-container) are translucent so it
+  // shows through — see App.css.
   const backdrop = (
     <div className="app-bg" aria-hidden="true">
-      <LetterGlitch
-        glitchColors={["#ffffff", "#adb8ab", "#f0f0f0"]}
-        glitchSpeed={20}
-        centerVignette
-        outerVignette
-        smooth
-      />
+      {/* The index (not the id) is what makes the sweep directional: moving down
+          the nav sweeps downward, moving back up sweeps upward. */}
+      <PixelFlowBackground burstKey={NAV_ITEMS.findIndex(item => item.id === activeTab)} />
     </div>
   );
 

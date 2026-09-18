@@ -24,8 +24,12 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   const [scanPath, setScanPath] = useState("");
   const logCounter = useRef(0);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wasBusy = useRef(false);
   const [running, setRunning] = useState(false);
   const [input, setInput] = useState("");
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(0);
   const [presets, setPresets] = useState<{ id: string; label: string; command: string }[]>([]);
 
   // Batch incoming lines: many can arrive per frame (a verbose scan emits one
@@ -34,9 +38,19 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   const pending = useRef<LogLine[]>([]);
   const flushScheduled = useRef(false);
 
+  const busy = scanning || running;
+
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [logs, progress]);
+
+  // The prompt is disabled while a command runs, and disabling drops focus.
+  // Hand it back once the command finishes — but only then, so opening the tab
+  // doesn't steal focus from the scan path field.
+  useEffect(() => {
+    if (wasBusy.current && !busy) inputRef.current?.focus();
+    wasBusy.current = busy;
+  }, [busy]);
 
   useEffect(() => {
     fetch("http://localhost:4000/api/homedir")
@@ -141,6 +155,11 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
   function submitInput() {
     const cmd = input.trim();
     if (!cmd || running) return;
+
+    const nextHistory = [...history, cmd].slice(-50);
+    setHistory(nextHistory);
+    setHistoryIndex(nextHistory.length);
+
     setInput("");
     runCommand(cmd);
   }
@@ -181,7 +200,27 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
     }
   }
 
-  const busy = scanning || running;
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      submitInput();
+      return;
+    }
+    if (history.length === 0) return;
+
+    // Index history.length means "not browsing", so Up lands on the newest
+    // entry first and Down has a clean past-the-end state to return to.
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const newIndex = Math.max(historyIndex - 1, 0);
+      setHistoryIndex(newIndex);
+      setInput(history[newIndex] || "");
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const newIndex = Math.min(historyIndex + 1, history.length);
+      setHistoryIndex(newIndex);
+      setInput(history[newIndex] || "");
+    }
+  }
 
   return (
     <div className="osv-tab">
@@ -260,10 +299,11 @@ export default function AvConsole({ onScanComplete }: AvConsoleProps) {
 
       <div className="osv-field-row" style={{ marginTop: 10 }}>
         <input
+          ref={inputRef}
           className="osv-input"
           value={input}
           onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter") submitInput(); }}
+          onKeyDown={handleKeyDown}
           placeholder="clamscan --version"
           disabled={busy}
           spellCheck={false}

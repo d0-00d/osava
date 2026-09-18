@@ -31,15 +31,23 @@ export async function readHistoryFile(): Promise<ScanRecord[]> {
   }
 }
 
+const HISTORY_FILE = path.join(os.homedir(), ".osava", "scan-history.json");
+
 export async function appendHistoryRecord(record: ScanRecord): Promise<void> {
-  try{
-    const historyFile = path.join(os.homedir(), ".osava", "scan-history.json");
+  try {
     const history = await readHistoryFile();
     history.unshift(record);
-    await fs.mkdir(path.dirname(historyFile), { recursive: true });
-    await fs.writeFile(historyFile, JSON.stringify(history, null, 2), "utf-8");
+    // Trim before writing — trimming afterwards only shortens the in-memory
+    // copy and lets the file grow without limit.
     if (history.length > 100) history.splice(100);
+    await fs.mkdir(path.dirname(HISTORY_FILE), { recursive: true });
+    await fs.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), "utf-8");
   } catch (error) {
     console.error("Error appending to history file:", error);
   }
+}
+
+export async function clearHistoryFile(): Promise<void> {
+  await fs.mkdir(path.dirname(HISTORY_FILE), { recursive: true });
+  await fs.writeFile(HISTORY_FILE, JSON.stringify([], null, 2), "utf-8");
 }

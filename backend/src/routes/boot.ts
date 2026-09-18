@@ -44,7 +44,7 @@ router.get("/api/boot", async (req, res) => {
     const routes = [
       { name: "system",  endpoints: ["/health", "/api/homedir", "/api/system-status"] },
       { name: "install", endpoints: ["/api/install-status", "/api/uninstall"] },
-      { name: "av",      endpoints: ["/api/av/scan", "/api/av/update-definitions", "/api/av/history"] },
+      { name: "av",      endpoints: ["/api/av/scan", "/api/av/exec", "/api/av/commands", "/api/av/history"] },
     ];
 
     for (const route of routes) {

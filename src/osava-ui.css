@@ -310,6 +310,13 @@
 .osv-term-line { color: var(--osv-text); white-space: pre-wrap; word-break: break-word; }
 .osv-term-line--done { color: var(--osv-teal); }
 .osv-term-line--error { color: var(--osv-danger); }
+.osv-metric {
+  font-family: var(--osv-display, 'Pixelify Sans'), sans-serif;
+  font-size: 28px;
+  line-height: 1.1;
+  color: var(--osv-text);
+}
+
 .osv-term-line--command { color: var(--osv-text-dim); }
 .osv-term-line--command::before { content: "> "; color: var(--osv-teal); }
 .osv-term-empty { color: var(--osv-text-dim); font-style: italic; }
