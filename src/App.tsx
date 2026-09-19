@@ -108,8 +108,8 @@ function App() {
   );
 
   // Faint animated backdrop, fixed behind everything (splash + shell). The
-  // surfaces on top (.content/.sidebar/.splash-container) are translucent so it
-  // shows through — see App.css.
+  // surfaces on top (.content/.sidebar) are translucent so it shows through —
+  // see App.css. The splash paints its own opaque flow over this one.
   const backdrop = (
     <div className="app-bg" aria-hidden="true">
       {/* The index (not the id) is what makes the sweep directional: moving down
@@ -132,7 +132,14 @@ function App() {
           pixelColor="#e3e3ec"
           animationStepDuration={0.5}
           holdDuration={0.12}
-          firstContent={<SplashScreen onComplete={() => setTransitioning(true)} />}
+          firstContent={
+            <SplashScreen
+              onComplete={() => setTransitioning(true)}
+              tagline="Security Suite"
+              footer="OSAVA v1.0.0 // BEING gay is ok! desu"
+              launchLabel="Launch DESU!!"
+            />
+          }
           secondContent={shell}
         />
       ) : (

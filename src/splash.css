@@ -1,0 +1,218 @@
+/* ─────────────────────────────────────────────────────────────
+   OSAVA splash screen. The wordmark itself is drawn by the pixel
+   flow shader behind this layer; .splash-wordmark only reserves
+   the space and reports its position to the shader.
+   ───────────────────────────────────────────────────────────── */
+
+.splash {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--splash-bg, #0a090c);
+  font-family: var(--osv-mono, "JetBrains Mono", "Cascadia Code", Consolas, monospace);
+  color: var(--osv-text, #e6e1e1);
+}
+
+.splash-flow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 700ms ease;
+}
+.splash.is-lit .splash-flow { opacity: 1; }
+
+/* Layout column above the shader */
+.splash-stage {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 32px 20px 64px;
+  box-sizing: border-box;
+}
+
+/* Reserved space for the shader wordmark. Never paints anything itself. */
+.splash-wordmark {
+  width: min(52vw, 600px);
+  /* Holds the slot before the mask is measured, so nothing shifts. */
+  aspect-ratio: 16 / 5;
+  flex-shrink: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  /* aspect-ratio is set inline once the mask is measured */
+}
+.splash-wordmark:focus-visible {
+  outline: 1px solid var(--osv-teal, #85d5c6);
+  outline-offset: 12px;
+}
+
+.splash-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Tagline under the wordmark, revealed a character at a time */
+.splash-tagline {
+  font-size: 11px;
+  letter-spacing: 0.38em;
+  text-transform: uppercase;
+  color: var(--osv-teal, #85d5c6);
+  min-height: 1.2em;
+  margin: -6px 0 0;
+  white-space: nowrap;
+}
+.splash-tagline .caret {
+  opacity: 0.8;
+  animation: splash-blink 1s steps(1) infinite;
+}
+
+/* Boot console */
+.splash-console {
+  width: min(560px, 100%);
+  border: 1px solid var(--osv-teal-border, rgba(51, 134, 121, 0.35));
+  border-radius: 3px;
+  background: rgba(8, 8, 10, 0.92);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 420ms ease, transform 420ms cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.splash.is-booting .splash-console {
+  opacity: 1;
+  transform: none;
+}
+
+.splash-console-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--osv-teal-border, rgba(51, 134, 121, 0.35));
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--osv-text-secondary, #cac5ca);
+}
+.splash-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  background: var(--osv-teal, #85d5c6);
+  animation: splash-blink 1.6s ease-in-out infinite;
+}
+.splash-dot.is-warn { background: var(--osv-warn, #fb923c); animation: none; }
+.splash-dot.is-done { background: var(--osv-teal, #85d5c6); animation: none; }
+.splash-console-bar .spacer { margin-left: auto; letter-spacing: 0.1em; opacity: 0.7; }
+
+.splash-log {
+  height: 176px;
+  overflow-y: auto;
+  padding: 12px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.75;
+  color: var(--osv-text-secondary, #cac5ca);
+  scrollbar-width: thin;
+}
+.splash-log::-webkit-scrollbar { width: 4px; }
+.splash-log::-webkit-scrollbar-track { background: transparent; }
+.splash-log::-webkit-scrollbar-thumb { background: rgba(133, 213, 198, 0.3); }
+
+.splash-line { display: flex; gap: 8px; white-space: pre-wrap; word-break: break-word; }
+.splash-line .gutter { flex-shrink: 0; width: 1ch; color: var(--osv-teal, #85d5c6); }
+.splash-line.is-ok > .body { color: var(--osv-teal, #85d5c6); }
+.splash-line.is-warn > .body { color: var(--osv-warn, #fb923c); }
+.splash-line.is-done > .body { color: var(--osv-teal, #85d5c6); font-weight: 500; }
+
+/* Announced but not wired up yet (smolLM). Deliberately quiet: it reads as a
+   placeholder rather than a result, and never counts as ok or warn. */
+.splash-line.is-pending > .gutter { color: var(--osv-text-dim, rgba(202, 197, 202, 0.45)); }
+.splash-line.is-pending > .body {
+  color: var(--osv-text-dim, rgba(202, 197, 202, 0.45));
+  font-style: italic;
+}
+
+.splash-caret {
+  color: var(--osv-teal, #85d5c6);
+  animation: splash-blink 1s steps(1) infinite;
+}
+
+/* Launch */
+.splash-actions {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.splash-launch {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #00201c;
+  background: var(--osv-teal, #85d5c6);
+  border: 1px solid var(--osv-teal, #85d5c6);
+  border-radius: 3px;
+  padding: 12px 34px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: splash-rise 320ms ease forwards;
+  transition: box-shadow 200ms ease, background 200ms ease;
+}
+.splash-launch:hover { box-shadow: 0 0 22px 2px rgba(133, 213, 198, 0.45); }
+.splash-launch:focus-visible { outline: 2px solid var(--osv-text, #e6e1e1); outline-offset: 3px; }
+
+.splash-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  z-index: 1;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(202, 197, 202, 0.28);
+  pointer-events: none;
+}
+
+@keyframes splash-blink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0.15; }
+  100% { opacity: 1; }
+}
+@keyframes splash-rise {
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-flow,
+  .splash-console { transition: none; }
+  .splash-launch { animation: none; opacity: 1; transform: none; }
+  .splash-dot,
+  .splash-caret,
+  .splash-tagline .caret { animation: none; }
+}
+
+@media (max-width: 560px) {
+  .splash-wordmark { width: 78vw; }
+  .splash-log { height: 140px; }
+  .splash-stage { gap: 16px; }
+}

@@ -13,6 +13,11 @@ export interface PixelFlowBackgroundProps extends Partial<PixelFlowOptions> {
    * sweeps downward.
    */
   burstKey?: string | number;
+  /**
+   * Receives the engine handle, for calling transition() or kick() directly.
+   * Set to null on unmount.
+   */
+  controlRef?: { current: PixelFlowHandle | null };
   className?: string;
   style?: CSSProperties;
   /** absolute fills the nearest positioned parent (for example .app-bg). */
@@ -26,6 +31,7 @@ export interface PixelFlowBackgroundProps extends Partial<PixelFlowOptions> {
  */
 export default function PixelFlowBackground({
   burstKey,
+  controlRef,
   className,
   style,
   position = "absolute",
@@ -47,9 +53,11 @@ export default function PixelFlowBackground({
       console.error(err);
     }
     handleRef.current = handle;
+    if (controlRef) controlRef.current = handle;
     return () => {
       handle?.destroy();
       handleRef.current = null;
+      if (controlRef) controlRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -62,6 +70,7 @@ export default function PixelFlowBackground({
     o.intensity, o.vignette, o.alert, o.interactive, o.transition, o.transitionMs,
     o.accent, o.highlight, o.warn,
     o.background, o.maxDpr, o.fps, o.seed, o.paused,
+    o.mask, o.maskAmount, o.maskEaseMs, o.maskSeed, o.maskRect.join(),
   ]);
 
   useEffect(() => {

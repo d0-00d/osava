@@ -15,11 +15,15 @@
  *   tear  : a few choppy frames of torn rows, two-tone split, striped blocks
  *   sweep : a pixel scan line crosses the screen and refreshes what it passes
  *
+ * Mask (for a splash wordmark): pass a canvas whose bright areas are the shape.
+ * Raising maskAmount dissolves the shape in, pixel by pixel, out of the flow.
+ *
  * Pass 1 renders the field into a small texture. Pass 2 draws the pixels.
  */
 
 export type PixelFlowMode = "dither" | "rows" | "ascii";
 export type PixelFlowTransition = "both" | "tear" | "sweep" | "none";
+export type PixelFlowMaskSource = HTMLCanvasElement | HTMLImageElement | ImageBitmap;
 
 export interface PixelFlowOptions {
   mode: PixelFlowMode;
@@ -47,6 +51,19 @@ export interface PixelFlowOptions {
   transition: PixelFlowTransition;
   /** Length of the transition in ms. */
   transitionMs: number;
+  /**
+   * Shape to carve out of the flow, as a canvas or image whose red channel is
+   * the shape (white = inside). Null clears it. Used for the splash wordmark.
+   */
+  mask: PixelFlowMaskSource | null;
+  /** How far the mask is revealed, 0 to 1. Animated over maskEaseMs. */
+  maskAmount: number;
+  /** Time the reveal takes, in ms. */
+  maskEaseMs: number;
+  /** Where the mask sits: width as a fraction of the canvas, then center x, y. */
+  maskRect: [number, number, number];
+  /** Changes the dissolve pattern without changing the shape. */
+  maskSeed: number;
   accent: string;
   highlight: string;
   warn: string;
@@ -71,6 +88,11 @@ export const PIXEL_FLOW_DEFAULTS: PixelFlowOptions = {
   interactive: true,
   transition: "both",
   transitionMs: 650,
+  mask: null,
+  maskAmount: 0,
+  maskEaseMs: 1100,
+  maskRect: [0.52, 0.5, 0.34],
+  maskSeed: 3,
   accent: "#85d5c6",
   highlight: "#e6e1e1",
   warn: "#fb923c",
@@ -90,6 +112,8 @@ export interface PixelFlowHandle {
    * later tab), -1 sweeps upward. Skipped when reduced motion is on.
    */
   transition(direction?: number): void;
+  /** True once the mask reveal has finished animating. */
+  maskSettled(): boolean;
   render(): void;
   destroy(): void;
   readonly supported: boolean;
@@ -310,6 +334,11 @@ uniform float uSwitchDir;   // 1 sweeps down, -1 sweeps up
 uniform float uSwitchSeed;
 uniform float uTransTears;  // 1 enables tear frames
 uniform float uTransSweep;  // 1 enables the scan sweep
+uniform sampler2D uMask;
+uniform float uMaskOn;      // 1 when a mask texture is bound
+uniform float uMaskAmount;  // reveal progress 0..1
+uniform vec4  uMaskRect;    // width fraction, aspect, center x, center y (from top)
+uniform float uMaskSeed;
 ${HASH}
 
 vec3  gAccent;
@@ -438,6 +467,12 @@ vec3 renderDither(vec2 pu) {
   return max(col, uHi * pk * dash);
 }
 
+// Mask lookup in screen space. Returns 0 outside the mask rectangle.
+float maskAt(vec2 muv) {
+  float inBox = step(0.0, muv.x) * step(muv.x, 1.0) * step(0.0, muv.y) * step(muv.y, 1.0);
+  return inBox * texture2D(uMask, vec2(muv.x, 1.0 - muv.y)).r;
+}
+
 vec3 renderMode(vec2 pu) {
   if (uMode > 1.5) return renderAscii(pu);
   if (uMode > 0.5) return renderRows(pu);
@@ -500,8 +535,55 @@ void main() {
   float r = length((uv - 0.5) * vec2(uRes.x / uRes.y, 1.0));
   float outer = 1.0 - 0.5 * smoothstep(0.45, 1.05, r);
   float center = mix(1.0, 0.5 + 0.5 * smoothstep(0.0, 0.6, r), uVignette);
+  col *= uIntensity * outer * center;
 
-  gl_FragColor = vec4(min(uBg + col * uIntensity * outer * center, vec3(1.0)), 1.0);
+  if (uMaskOn > 0.5 && uMaskAmount > 0.001) {
+    // Splash wordmark: an outlined shape whose interior is filled with the
+    // same dithered pixels as the flow behind it, dissolving in left to right.
+    float w = uRes.x * uMaskRect.x;
+    float h = w / max(uMaskRect.y, 0.001);
+    vec2 c = vec2(uRes.x * uMaskRect.z, uRes.y * (1.0 - uMaskRect.w));
+    vec2 muv = (px - c) / vec2(w, h) + 0.5;
+
+    // Everything outside the wordmark's box only dims, so skip the sampling.
+    float near = step(-0.03, muv.x) * step(muv.x, 1.03)
+               * step(-0.03, muv.y) * step(muv.y, 1.03);
+    col *= 1.0 - 0.5 * uMaskAmount;
+    if (near > 0.5) {
+
+    float m = maskAt(muv);
+    float solid = step(0.5, m);
+
+    // One pixel out in each direction: if any neighbour is outside, this is the rim.
+    vec2 o = vec2(uUnit / w, uUnit / h);
+    float nb = min(min(maskAt(muv + vec2(o.x, 0.0)), maskAt(muv - vec2(o.x, 0.0))),
+                   min(maskAt(muv + vec2(0.0, o.y)), maskAt(muv - vec2(0.0, o.y))));
+    float rim = solid * (1.0 - step(0.5, nb));
+
+    // Interior fill density follows the flow, so the letters carry its texture.
+    float body = clamp(dot(col, vec3(0.34)) * 3.2 + 0.22, 0.0, 1.0);
+    float fill = solid * step(bayer8(pu), 0.38 + 0.62 * body);
+    float shape = max(rim, fill);
+
+    // Reveal wipes left to right, scattered by a per-pixel hash so it granulates.
+    float a = uMaskAmount;
+    float wipe = clamp(a * 2.1 - muv.x * 0.85 - 0.12, 0.0, 1.0);
+    wipe = wipe * wipe * (3.0 - 2.0 * wipe);
+    float grain = hash21(pu * 1.31 + uMaskSeed * 7.0);
+    float lit = shape * step(grain, wipe);
+
+    vec3 inside = mix(gAccent, uHi, max(smoothstep(0.45, 1.0, body) * 0.55, rim * 0.7));
+
+    // The advancing front burns brighter for a moment.
+    float front = lit * (1.0 - smoothstep(0.0, 0.3, wipe - grain)) * (1.0 - a * 0.5);
+    inside += uHi * front * 0.9;
+
+    // The dim above already applied; undo it inside the letters.
+    col = mix(col, inside, lit);
+    }
+  }
+
+  gl_FragColor = vec4(min(uBg + col, vec3(1.0)), 1.0);
 }
 `;
 
@@ -572,7 +654,10 @@ export function createPixelFlow(
 
   if (!gl) {
     canvas.style.background = opts.background;
-    return { update() {}, kick() {}, transition() {}, render() {}, destroy() {}, supported: false };
+    return {
+      update() {}, kick() {}, transition() {}, maskSettled: () => true,
+      render() {}, destroy() {}, supported: false,
+    };
   }
   const ctx: WebGLRenderingContext = gl;
 
@@ -585,6 +670,7 @@ export function createPixelFlow(
   let pixelProg: Program | null = null;
   let quad: WebGLBuffer | null = null;
   let fieldTex: WebGLTexture | null = null;
+  let maskTex: WebGLTexture | null = null;
   let atlasTex: WebGLTexture | null = null;
   let fbo: WebGLFramebuffer | null = null;
 
@@ -604,6 +690,9 @@ export function createPixelFlow(
   let switchT = 1; // 1 means idle
   let switchDir = 1;
   let switchSeed = 0;
+  let maskNow = opts.maskAmount;
+  let maskSource: PixelFlowMaskSource | null = null;
+  let maskAspect = 1;
 
   let pointerX = -1e4;
   let pointerY = -1e4;
@@ -623,6 +712,7 @@ export function createPixelFlow(
       "uGlitch", "uKick", "uPackets", "uScanlines", "uIntensity", "uVignette", "uAlert",
       "uBg", "uAccent", "uHi", "uWarn",
       "uSwitch", "uSwitchT", "uSwitchDir", "uSwitchSeed", "uTransTears", "uTransSweep",
+      "uMask", "uMaskOn", "uMaskAmount", "uMaskRect", "uMaskSeed",
     ]);
 
     quad = ctx.createBuffer();
@@ -642,6 +732,7 @@ export function createPixelFlow(
     };
 
     fieldTex = makeTex(ctx.LINEAR);
+    maskTex = makeTex(ctx.LINEAR);
     atlasTex = makeTex(ctx.NEAREST);
     ctx.pixelStorei(ctx.UNPACK_ALIGNMENT, 1);
     ctx.texImage2D(ctx.TEXTURE_2D, 0, ctx.LUMINANCE, ATLAS_W, ATLAS_H, 0, ctx.LUMINANCE, ctx.UNSIGNED_BYTE, buildAtlas());
@@ -649,6 +740,32 @@ export function createPixelFlow(
     fbo = ctx.createFramebuffer();
     width = 0;
     resize();
+    uploadMask();
+  }
+
+  /** Re-uploads the mask image. Safe to call with the same source. */
+  function uploadMask(): void {
+    const src = opts.mask;
+    if (!src || lost || !maskTex) {
+      maskSource = null;
+      return;
+    }
+    const w = "naturalWidth" in src ? src.naturalWidth : src.width;
+    const h = "naturalHeight" in src ? src.naturalHeight : src.height;
+    if (!w || !h) {
+      maskSource = null;
+      return;
+    }
+    maskAspect = w / h;
+    maskSource = src;
+    ctx.bindTexture(ctx.TEXTURE_2D, maskTex);
+    ctx.pixelStorei(ctx.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 0);
+    try {
+      ctx.texImage2D(ctx.TEXTURE_2D, 0, ctx.RGBA, ctx.RGBA, ctx.UNSIGNED_BYTE, src);
+    } catch (err) {
+      console.error("pixelFlow: mask upload failed", err);
+      maskSource = null;
+    }
   }
 
   function resize(): void {
@@ -743,11 +860,25 @@ export function createPixelFlow(
     ctx.uniform1f(pixelProg.u.uSwitchSeed, switchSeed);
     ctx.uniform1f(pixelProg.u.uTransTears, opts.transition === "both" || opts.transition === "tear" ? 1 : 0);
     ctx.uniform1f(pixelProg.u.uTransSweep, opts.transition === "both" || opts.transition === "sweep" ? 1 : 0);
+    ctx.activeTexture(ctx.TEXTURE2);
+    ctx.bindTexture(ctx.TEXTURE_2D, maskTex);
+    ctx.uniform1i(pixelProg.u.uMask, 2);
+    ctx.activeTexture(ctx.TEXTURE0);
+    ctx.uniform1f(pixelProg.u.uMaskOn, maskSource ? 1 : 0);
+    ctx.uniform1f(pixelProg.u.uMaskAmount, maskNow);
+    ctx.uniform4f(
+      pixelProg.u.uMaskRect,
+      opts.maskRect[0], maskAspect, opts.maskRect[1], opts.maskRect[2],
+    );
+    ctx.uniform1f(pixelProg.u.uMaskSeed, opts.maskSeed % 97);
     ctx.drawArrays(ctx.TRIANGLES, 0, 3);
   }
 
   function animating(): boolean {
-    return !opts.paused && motionAllowed() && !document.hidden;
+    if (document.hidden) return false;
+    // A mask still settling keeps the loop alive even when motion is reduced.
+    if (maskNow !== opts.maskAmount) return true;
+    return !opts.paused && motionAllowed();
   }
 
   function tick(now: number): void {
@@ -764,6 +895,12 @@ export function createPixelFlow(
     clock = (clock + dt) % CLOCK_WRAP;
     kickNow = Math.max(0, kickNow - dt * 2.5);
     if (switchT < 1) switchT = Math.min(1, switchT + (dt * 1000) / Math.max(100, opts.transitionMs));
+    if (maskNow !== opts.maskAmount) {
+      const step = (dt * 1000) / Math.max(1, opts.maskEaseMs);
+      maskNow = opts.maskAmount > maskNow
+        ? Math.min(opts.maskAmount, maskNow + step)
+        : Math.max(opts.maskAmount, maskNow - step);
+    }
     alertNow += (opts.alert - alertNow) * Math.min(1, dt * 4);
     const target = opts.interactive && now - lastPointer < 1500 ? 1 : 0;
     presence += (target - presence) * Math.min(1, dt * 4);
@@ -780,6 +917,7 @@ export function createPixelFlow(
     if (raf || destroyed || lost) return;
     lastTick = 0;
     lastDraw = 0;
+    if (!motionAllowed()) maskNow = opts.maskAmount;
     if (animating()) raf = requestAnimationFrame(tick);
     else {
       alertNow = opts.alert;
@@ -825,12 +963,17 @@ export function createPixelFlow(
   return {
     supported: true,
     update(next) {
+      const prevMask = opts.mask;
       opts = { ...opts, ...next };
+      if (opts.mask !== prevMask) uploadMask();
       restart();
       if (!raf) draw();
     },
     kick(strength = 1) {
       kickNow = Math.max(kickNow, Math.min(1, Math.max(0, strength)));
+    },
+    maskSettled() {
+      return maskNow === opts.maskAmount;
     },
     transition(direction = 1) {
       if (opts.transition === "none" || !motionAllowed()) return;
@@ -853,6 +996,7 @@ export function createPixelFlow(
       canvas.removeEventListener("webglcontextrestored", onRestored);
       if (!ctx.isContextLost()) {
         ctx.deleteTexture(fieldTex);
+        ctx.deleteTexture(maskTex);
         ctx.deleteTexture(atlasTex);
         ctx.deleteFramebuffer(fbo);
         ctx.deleteBuffer(quad);

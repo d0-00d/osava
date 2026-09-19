@@ -11,7 +11,9 @@ const router = Router();
  *
  * Server-Sent Events endpoint that streams real backend initialization
  * status to the splash screen terminal. Each event is a JSON object with
- * { type, text } where type is "log" | "ok" | "warn" | "done".
+ * { type, text } where type is "log" | "ok" | "warn" | "pending" | "done".
+ * "pending" marks a subsystem that is planned but not wired up yet — the
+ * splash shows it greyed out and it never blocks the launch.
  */
 router.get("/api/boot", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
@@ -119,6 +121,14 @@ router.get("/api/boot", async (req, res) => {
     } catch {
       send("log", "  No scan history file");
     }
+    await sleep(200);
+
+    // ── Step 7: smolLM assistant ────────────────────────────
+    // Not implemented yet. Reported as "pending" on purpose so the splash
+    // shows the slot without ever claiming the runtime is available.
+    send("log", "> Checking smolLM assistant runtime...");
+    await sleep(300);
+    send("pending", "  smolLM — pending (runtime not wired up yet)");
     await sleep(200);
 
     // ── Done ────────────────────────────────────────────────
