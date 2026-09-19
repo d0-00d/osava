@@ -163,7 +163,7 @@ export function runCommand(
     if (isScan && l.includes("FOUND")) {
       const filename = l.substring(0, l.lastIndexOf(":")).trim();
       if (filename) infectedFiles.push(filename);
-      onEvent("error", l);
+      onEvent("threat", l);
     } else {
       onEvent("log", l);
     }

@@ -24,6 +24,12 @@ type SplashCompleteData = {
 
 type SplashProps = {
   onComplete: (data: SplashCompleteData) => void;
+  /**
+   * A flow backdrop owned by the app. When given, the splash paints its
+   * wordmark onto that instance instead of creating one of its own, so the
+   * backdrop keeps running across the handoff to the main screen.
+   */
+  flowRef?: { current: PixelFlowHandle | null };
   /** Shown once the wordmark has resolved. */
   tagline?: string;
   /** Bottom-left strip. */
@@ -48,6 +54,7 @@ const LINE_INTERVAL = 45;
 
 export default function SplashScreen({
   onComplete,
+  flowRef,
   tagline = "Security Suite",
   footer = "OSAVA v1.0.0",
   launchLabel = "Launch",
@@ -63,7 +70,11 @@ export default function SplashScreen({
   const [visibleCount, setVisibleCount] = useState(0);
   const [taglineLen, setTaglineLen] = useState(0);
 
-  const flowRef = useRef<PixelFlowHandle | null>(null);
+  // Either the app's backdrop (shared, so it survives the handoff) or one this
+  // screen creates for itself.
+  const ownFlowRef = useRef<PixelFlowHandle | null>(null);
+  const flow = flowRef ?? ownFlowRef;
+  const ownsFlow = !flowRef;
   const logRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLButtonElement>(null);
 
@@ -83,7 +94,7 @@ export default function SplashScreen({
       return;
     }
     setStage("wordmark");
-    flowRef.current?.transition(1);
+    flow.current?.transition(1);
     const timers = [
       window.setTimeout(() => setStage("tagline"), STAGE_AT.tagline - STAGE_AT.wordmark),
       window.setTimeout(() => setStage("booting"), STAGE_AT.booting - STAGE_AT.wordmark),
@@ -120,6 +131,28 @@ export default function SplashScreen({
     if (!mask || stage === "dark") return;
     setMaskAmount(1);
   }, [mask, stage]);
+
+  // Mask settings go straight to the handle rather than through props, so a
+  // backdrop shared with the app keeps them when the app re-renders.
+  useEffect(() => {
+    flow.current?.update({ mask, maskAmount, maskEaseMs: maskEase, maskRect, maskSeed });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mask, maskAmount, maskEase, maskSeed, maskRect.join()]);
+
+  useEffect(() => {
+    flow.current?.update({ alert: failed ? 1 : 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [failed]);
+
+  // Hand a shared backdrop back the way it was found, or the app inherits the
+  // splash's wordmark and warn state.
+  useEffect(() => {
+    if (ownsFlow) return;
+    return () => {
+      flow.current?.update({ mask: null, maskAmount: 0, alert: 0 });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownsFlow]);
 
   // Clicking the wordmark replays the dissolve with a new scatter pattern.
   const replayTimer = useRef(0);
@@ -240,7 +273,7 @@ export default function SplashScreen({
   const ready = allDone && drained;
 
   function launch() {
-    flowRef.current?.transition(1);
+    flow.current?.transition(1);
     onComplete({ installStatus: null, hasHistory: false });
   }
 
@@ -248,25 +281,23 @@ export default function SplashScreen({
 
   return (
     <div className={`splash${lit ? " is-lit" : ""}${booting ? " is-booting" : ""}`}>
-      <PixelFlowBackground
-        className="splash-flow"
-        controlRef={flowRef}
-        mode="dither"
-        pixelSize={2}
-        scale={1.15}
-        speed={0.8}
-        packets={0.35}
-        glitch={0.2}
-        intensity={0.6}
-        vignette={0.7}
-        alert={failed ? 1 : 0}
-        mask={mask}
-        maskAmount={maskAmount}
-        maskEaseMs={maskEase}
-        maskRect={maskRect}
-        maskSeed={maskSeed}
-        seed={5}
-      />
+      {/* Only when the app hasn't handed us one. Mask and alert are pushed
+          through the handle above, so they work either way. */}
+      {ownsFlow && (
+        <PixelFlowBackground
+          className="splash-flow"
+          controlRef={ownFlowRef}
+          mode="dither"
+          pixelSize={2}
+          scale={1.15}
+          speed={0.8}
+          packets={0.35}
+          glitch={0.2}
+          intensity={0.6}
+          vignette={0.7}
+          seed={5}
+        />
+      )}
 
       <div className="splash-stage">
         <h1 className="splash-sr-only">{WORDMARK}</h1>

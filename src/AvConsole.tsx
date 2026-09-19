@@ -4,12 +4,13 @@ import { OsavaHeader } from "./OsavaUI";
 
 type LogLine = {
   id: number;
-  type: "log" | "done" | "error" | "command";
+  type: "log" | "done" | "error" | "command" | "threat";
   text: string;
 };
 
 type AvConsoleProps = {
-  onScanComplete: () => void;
+  onScanComplete: () => void; 
+  onThreatDetected?: (threatCount: number) => void;
 };
 
 // Cap how many log lines stay in the DOM so huge outputs (verbose scans of

@@ -41,11 +41,7 @@ export default function PixelFlowBackground({
   const handleRef = useRef<PixelFlowHandle | null>(null);
   const prevKey = useRef<string | number | undefined>(burstKey);
 
-  // Only what the parent actually passed. Updates push just these, so anything
-  // a caller sets imperatively on the handle (a splash mask, say) survives a
-  // parent re-render instead of being reset to the defaults.
-  const explicit = stripUndefined(options);
-  const o: PixelFlowOptions = { ...PIXEL_FLOW_DEFAULTS, ...explicit };
+  const o: PixelFlowOptions = { ...PIXEL_FLOW_DEFAULTS, ...stripUndefined(options) };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -67,16 +63,14 @@ export default function PixelFlowBackground({
   }, []);
 
   useEffect(() => {
-    handleRef.current?.update(explicit);
+    handleRef.current?.update(o);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    explicit.mode, explicit.pixelSize, explicit.scale, explicit.speed, explicit.glitch,
-    explicit.packets, explicit.scanlines, explicit.intensity, explicit.vignette,
-    explicit.alert, explicit.interactive, explicit.transition, explicit.transitionMs,
-    explicit.accent, explicit.highlight, explicit.warn, explicit.background,
-    explicit.maxDpr, explicit.fps, explicit.seed, explicit.paused,
-    explicit.mask, explicit.maskAmount, explicit.maskEaseMs, explicit.maskSeed,
-    explicit.maskRect?.join(),
+    o.mode, o.pixelSize, o.scale, o.speed, o.glitch, o.packets, o.scanlines,
+    o.intensity, o.vignette, o.alert, o.interactive, o.transition, o.transitionMs,
+    o.accent, o.highlight, o.warn,
+    o.background, o.maxDpr, o.fps, o.seed, o.paused,
+    o.mask, o.maskAmount, o.maskEaseMs, o.maskSeed, o.maskRect.join(),
   ]);
 
   useEffect(() => {

@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Dashboard from "./Dashboard";
 import SecurityHub from "./SecurityHub";
 import AvConsole from "./AvConsole";
 import ScanHistory from "./ScanHistory";
 import Threats from "./Threats";
 import SplashScreen from "./SplashScreen";
-import PixelTransition from "./PixelTransition";
+import PixelHandoff from "./PixelHandoff";
 import PixelFlowBackground from "./PixelFlowBackground";
+import type { PixelFlowHandle } from "./pixelFlow";
 
 import "./App.css";
 import "./osava-ui.css";
@@ -34,6 +35,10 @@ function App() {
   const [hasHistory, setHasHistory] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [threatAlert, setThreatAlert] = useState(0);
+  // Shared with the splash so the backdrop is one continuous instance across
+  // the handoff instead of the splash spawning and destroying its own.
+  const flowRef = useRef<PixelFlowHandle | null>(null);
 
   async function fetchInstallStatus() {
     try {
@@ -51,6 +56,9 @@ function App() {
       if (r.ok) {
         const d = await r.json();
         setHasHistory(d.length > 0);
+        // The newest record is the current picture: threats in the last scan
+        // turn the backdrop amber until a later scan comes back clean.
+        setThreatAlert((d[0]?.infectedFiles?.length ?? 0) > 0 ? 1 : 0);
       }
     } catch (e) {
       console.error("Failed to check history:", e);
@@ -114,26 +122,31 @@ function App() {
     <div className="app-bg" aria-hidden="true">
       {/* The index (not the id) is what makes the sweep directional: moving down
           the nav sweeps downward, moving back up sweeps upward. */}
-      <PixelFlowBackground burstKey={NAV_ITEMS.findIndex(item => item.id === activeTab)} />
+      <PixelFlowBackground
+        controlRef={flowRef}
+        burstKey={NAV_ITEMS.findIndex(item => item.id === activeTab)}
+        alert={threatAlert}
+      />
     </div>
   );
 
-  // Until the handoff finishes, the transition owns the screen: it holds the
-  // splash, covers it with the pixel grid, swaps the shell in underneath, then
-  // dissolves away to reveal it.
+  // Until the handoff finishes, the curtain owns the screen: it holds the
+  // splash, dithers across to cover it, swaps the shell in underneath, then
+  // dissolves away to reveal it. pixelSize matches the backdrop so the curtain
+  // and the flow read as the same material.
   return (
     <>
       {backdrop}
       {!initialized ? (
-        <PixelTransition
+        <PixelHandoff
           active={transitioning}
           onComplete={() => setInitialized(true)}
-          gridSize={28}
-          pixelColor="#e3e3ec"
-          animationStepDuration={0.5}
-          holdDuration={0.12}
+          durationMs={1100}
+          pixelSize={2}
+          direction="down"
           firstContent={
             <SplashScreen
+              flowRef={flowRef}
               onComplete={() => setTransitioning(true)}
               tagline="Security Suite"
               footer="OSAVA v1.0.0 // BEING gay is ok! desu"

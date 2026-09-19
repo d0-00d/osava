@@ -8,7 +8,9 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: var(--splash-bg, #0a090c);
+  /* Transparent: the flow canvas paints the ground, whether that's this
+     screen's own or the app's shared backdrop sitting behind it. */
+  background: transparent;
   font-family: var(--osv-mono, "JetBrains Mono", "Cascadia Code", Consolas, monospace);
   color: var(--osv-text, #e6e1e1);
 }
