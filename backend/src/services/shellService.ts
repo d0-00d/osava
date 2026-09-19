@@ -135,6 +135,7 @@ export function runCommand(
   const startedAt = new Date().toISOString();
   let scannedDirs: number | undefined;
   let scannedFiles: number | undefined;
+  let readErrors = 0;
 
   // Idempotent, and self-heals a db dir/conf that was never created.
   try {
@@ -155,6 +156,8 @@ export function runCommand(
       if (dirs?.[1]) scannedDirs = Number(dirs[1]);
       const files = l.match(/^Scanned files:\s*(\d+)/);
       if (files?.[1]) scannedFiles = Number(files[1]);
+      const errors = l.match(/^Total errors:\s*(\d+)/);
+      if (errors?.[1]) readErrors = Number(errors[1]);
     }
 
     if (isScan && l.includes("FOUND")) {
@@ -183,14 +186,26 @@ export function runCommand(
   child.on("close", async (code) => {
     currentScan.currentScan = null;
 
+    // clamscan exits 2 for "finished, but some files couldn't be read" — which
+    // on Windows just means something held a file open. That's not a failed
+    // scan, so it only counts as an error when nothing was scanned at all.
+    const scanDidWork = (scannedFiles ?? 0) > 0;
+    const outcome: ScanRecord["outcome"] =
+      code === null
+        ? "cancelled"
+        : infectedFiles.length > 0 || code === 1
+          ? "infected"
+          : code === 0 || scanDidWork
+            ? "clean"
+            : "error";
+
     if (isScan && !failedToStart) {
       const record: ScanRecord = {
         id: Date.now().toString(),
         path: scanTargetFrom(args),
         startedAt,
         finishedAt: new Date().toISOString(),
-        outcome:
-          code === null ? "cancelled" : code === 0 ? "clean" : code === 1 ? "infected" : "error",
+        outcome,
         infectedFiles,
         verbose: !args.includes("--infected"),
         scannedDirs,
@@ -199,15 +214,19 @@ export function runCommand(
       await appendHistoryRecord(record);
     }
 
+    const skipped = readErrors > 0 ? ` ${readErrors} file(s) could not be read.` : "";
+
     // The error handler already said why; a raw exit code adds only noise.
     if (failedToStart) {
       onEvent("done", "");
     } else if (code === null) {
       onEvent("log", isScan ? "Scan cancelled." : "Command cancelled.");
-    } else if (isScan && code === 0) {
-      onEvent("done", "Scan complete. No threats found.");
-    } else if (isScan && code === 1) {
-      onEvent("error", "Scan complete. Threats were found!");
+    } else if (isScan && outcome === "infected") {
+      onEvent("error", `Scan complete. Threats were found!${skipped}`);
+    } else if (isScan && outcome === "clean") {
+      onEvent("done", `Scan complete. No threats found.${skipped}`);
+    } else if (isScan) {
+      onEvent("error", `Scan failed (exit code ${code}).`);
     } else if (code === 0) {
       onEvent("done", "Exited with code 0");
     } else {
