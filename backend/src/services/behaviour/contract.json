@@ -1,0 +1,302 @@
+{
+  "schema_version": "2.1.0",
+  "base": "HuggingFaceTB/SmolLM3-3B",
+  "generated_by": "osava-ft/export_contract.py",
+  "input": {
+    "field_order": [
+      "EventID",
+      "EventType",
+      "Image",
+      "CommandLine",
+      "ParentImage",
+      "ParentCommandLine",
+      "User",
+      "Signed",
+      "Signer",
+      "DestinationIp",
+      "DestinationPort",
+      "DestinationHostname",
+      "TargetFilename",
+      "LogonType",
+      "AuthPackage"
+    ],
+    "max_cmdline": 512,
+    "truncation_marker": "<truncated>",
+    "user_message_template": "Event:\n{body}\n\nClassify.",
+    "supported_input_types": [
+      "log_lines",
+      "process_list",
+      "registry_entry"
+    ],
+    "supported_event_ids": [
+      1,
+      3,
+      7,
+      11,
+      12,
+      13,
+      4624,
+      4625
+    ]
+  },
+  "conversion": {
+    "event_types": {
+      "1": "Process Create",
+      "3": "Network Connection",
+      "7": "Image Load",
+      "8": "Remote Thread",
+      "10": "Process Access",
+      "11": "File Create",
+      "12": "Registry Create",
+      "13": "Registry Set",
+      "22": "DNS Query",
+      "4624": "Logon",
+      "4625": "Failed Logon",
+      "4688": "Process Create",
+      "4697": "Service Install"
+    },
+    "field_map": {
+      "Image": "Image",
+      "CommandLine": "CommandLine",
+      "ParentImage": "ParentImage",
+      "ParentCommandLine": "ParentCommandLine",
+      "User": "User",
+      "TargetUserName": "User",
+      "Signed": "Signed",
+      "Signature": "Signer",
+      "SignatureStatus": "SignatureStatus",
+      "DestinationIp": "DestinationIp",
+      "DestinationPort": "DestinationPort",
+      "DestinationHostname": "DestinationHostname",
+      "IpAddress": "DestinationIp",
+      "TargetFilename": "TargetFilename",
+      "TargetObject": "TargetFilename",
+      "ImageLoaded": "TargetFilename",
+      "LogonType": "LogonType",
+      "AuthenticationPackageName": "AuthPackage",
+      "LmPackageName": "AuthPackage"
+    },
+    "null_values": [
+      "-",
+      "N/A",
+      "0x0"
+    ],
+    "percent_unescape": [
+      "%%",
+      "%"
+    ],
+    "signature_eids": [
+      1,
+      7,
+      4688
+    ],
+    "signature_backfill": {
+      "vendor_signers": {
+        "chrome.exe": "Google LLC",
+        "GoogleUpdate.exe": "Google LLC",
+        "firefox.exe": "Mozilla Corporation",
+        "Code.exe": "Microsoft Corporation",
+        "OneDrive.exe": "Microsoft Corporation",
+        "Teams.exe": "Microsoft Corporation",
+        "OUTLOOK.EXE": "Microsoft Corporation",
+        "EXCEL.EXE": "Microsoft Corporation",
+        "WINWORD.EXE": "Microsoft Corporation",
+        "Update.exe": "Slack Technologies, LLC",
+        "slack.exe": "Slack Technologies, LLC",
+        "NVIDIA Web Helper.exe": "NVIDIA Corporation",
+        "Dropbox.exe": "Dropbox, Inc",
+        "7zG.exe": "Igor Pavlov",
+        "PsExec.exe": "Microsoft Corporation",
+        "PsExec64.exe": "Microsoft Corporation",
+        "PSEXESVC.exe": "Microsoft Corporation",
+        "python.exe": "Python Software Foundation",
+        "node.exe": "OpenJS Foundation",
+        "AcroRd32.exe": "Adobe Inc.",
+        "AnyDesk.exe": "AnyDesk Software GmbH",
+        "TeamViewer.exe": "TeamViewer Germany GmbH",
+        "putty.exe": "Simon Tatham",
+        "plink.exe": "Simon Tatham",
+        "7z.exe": "Igor Pavlov",
+        "ProcessHacker.exe": "Winsider Seminars & Solutions Inc."
+      },
+      "microsoft_signer": "Microsoft Windows",
+      "system_dirs": [
+        "c:\\windows\\system32",
+        "c:\\windows\\syswow64",
+        "c:\\windows\\winsxs",
+        "c:\\program files",
+        "c:\\program files (x86)"
+      ],
+      "writable_windows_dirs": [
+        "c:\\windows\\temp",
+        "c:\\windows\\tasks",
+        "c:\\windows\\debug",
+        "c:\\windows\\tracing",
+        "c:\\windows\\registration\\crmlog",
+        "c:\\windows\\system32\\spool\\drivers\\color",
+        "c:\\windows\\system32\\tasks"
+      ],
+      "unsigned_prefixes": [
+        "c:\\users\\public"
+      ]
+    }
+  },
+  "prompt": {
+    "template": "<|im_start|>system\n\nYou are SENTRI-Classifier, an intake analysis engine for a cybersecurity incident\nresponse system. You receive raw security data and classify it.\n\nYou ONLY output valid JSON. No preamble. No markdown. No explanation outside JSON.\n\nOutput schema (always use exactly this structure):\n{\n  \"severity\": \"none\" or \"low\" or \"medium\" or \"high\",\n  \"isThreat\": boolean,\n  \"threatType\": string or null,\n  \"indicators\": { \"key\": \"value\" },\n  \"reasoning\": \"one to three sentence explanation\"\n}\n\nthreatType values you may use:\ntraffic_spike, failed_logins, port_scan, data_exfiltration, lateral_movement,\nmalware, phishing, ransomware, privilege_escalation, supply_chain, sql_injection,\nxss, rce, credential_stuffing, reconnaissance, cryptomining, unknown\n\n\tYou are precise. When an event shows a known attack technique -- unsigned binaries\n\texecuting from temp paths, office applications spawning shells, service binaries\n\trunning as SYSTEM from non-standard paths, encoded or hidden-window commands --\n\trate it \"high\" or \"critical\" even if benign explanations are conceivable.\n\tReserve \"none\" and \"low\" for activity that is affirmatively normal: signed\n\tbinaries from system paths with expected parents. Do not under-rate clear\n\ttechnique matches.<|im_end|>\n<|im_start|>user\nEvent:\n{body}\n\nClassify.<|im_end|>\n<|im_start|>assistant\n",
+    "prefill": "{\"severity\": \"",
+    "stop": [
+      "<|im_end|>"
+    ]
+  },
+  "model": {
+    "name": "osava-smollm",
+    "gguf_sha256": "9ab1eba279cf0c71c12fc6505a4b76511487eeeab61c3113b8191dc113043d51",
+    "gguf_bytes": 1915305440,
+    "quantisation": "Q4_K_M"
+  },
+  "canaries": [
+    {
+      "id": "M011",
+      "body": "EventID: 1\nEventType: Process Create\nImage: C:\\Windows\\PSEXESVC.exe\nCommandLine: C:\\WINDOWS\\PSEXESVC.exe\nParentImage: C:\\Windows\\System32\\services.exe\nParentCommandLine: C:\\WINDOWS\\system32\\services.exe\nUser: NT AUTHORITY\\SYSTEM\nSigned: true\nSigner: Microsoft Corporation",
+      "expect": "malicious"
+    },
+    {
+      "id": "X074",
+      "body": "EventID: 1\nEventType: Process Create\nImage: C:\\Windows\\System32\\cmd.exe\nCommandLine: C:\\Windows\\system32\\cmd.exe /c test.bat\nParentImage: C:\\Users\\IEUser\\Downloads\\com-hijack.exe\nParentCommandLine: \"C:\\Users\\IEUser\\Downloads\\com-hijack.exe\"\nUser: IEWIN7\\IEUser\nSigned: true\nSigner: Microsoft Windows",
+      "expect": "malicious"
+    },
+    {
+      "id": "B025",
+      "body": "EventID: 7\nEventType: Image Load\nImage: C:\\Windows\\System32\\svchost.exe\nSigned: true\nSigner: Microsoft Windows\nTargetFilename: C:\\Windows\\System32\\winhttp.dll",
+      "expect": "benign"
+    }
+  ],
+  "severity": {
+    "scale": [
+      "none",
+      "low",
+      "medium",
+      "high"
+    ],
+    "accepted_on_input": [
+      "none",
+      "low",
+      "medium",
+      "high",
+      "critical"
+    ],
+    "bucket": {
+      "none": "benign",
+      "low": "benign",
+      "medium": "suspicious",
+      "high": "malicious",
+      "critical": "malicious"
+    },
+    "classes": [
+      "benign",
+      "suspicious",
+      "malicious"
+    ],
+    "score_prefix": "{\"severity\": \""
+  },
+  "routing": {
+    "escalate_severities": [
+      "high",
+      "critical"
+    ],
+    "escalate_threat_types": [
+      "lateral_movement",
+      "data_exfiltration",
+      "ransomware",
+      "privilege_escalation",
+      "supply_chain",
+      "rce",
+      "zero_day"
+    ],
+    "confidence_reported_by_model": false,
+    "confidence_from_severity": {
+      "none": 0.05,
+      "low": 0.2,
+      "medium": 0.5,
+      "high": 0.85,
+      "critical": 0.95
+    }
+  },
+  "indicators": [
+    "accessibility_hijack",
+    "account_manipulation",
+    "app_shim_install",
+    "blank_or_guest_account",
+    "browser_spawns_shell",
+    "context_dependent",
+    "credential_access",
+    "defense_evasion",
+    "discovery_command",
+    "download_cradle",
+    "encoded_command",
+    "exec_policy_bypass",
+    "expected_parent",
+    "hidden_window",
+    "legacy_auth_protocol",
+    "lolbin_exec",
+    "masquerading_name",
+    "office_spawns_shell",
+    "outbound_known_good",
+    "outbound_uncommon_port",
+    "payload_dropped",
+    "persistence_autorun",
+    "privilege_escalation",
+    "proxy_execution",
+    "raw_ip_no_dns",
+    "remote_service_install",
+    "restricted_service_acct",
+    "reverse_shell",
+    "service_binary_created",
+    "service_host_spawns_proc",
+    "signature_invalid",
+    "signed_known_vendor",
+    "signed_microsoft",
+    "smb_admin_share",
+    "system32_path",
+    "system_context_exec",
+    "temp_path_exec",
+    "uac_bypass",
+    "unsigned_binary"
+  ],
+  "exculpatory_indicators": [
+    "expected_parent",
+    "outbound_known_good",
+    "restricted_service_acct",
+    "signed_known_vendor",
+    "signed_microsoft",
+    "system32_path"
+  ],
+  "threat_types": [
+    "credential_stuffing",
+    "cryptomining",
+    "data_exfiltration",
+    "failed_logins",
+    "lateral_movement",
+    "malware",
+    "phishing",
+    "port_scan",
+    "privilege_escalation",
+    "ransomware",
+    "rce",
+    "reconnaissance",
+    "sql_injection",
+    "supply_chain",
+    "traffic_spike",
+    "unknown",
+    "xss"
+  ],
+  "output_fields": [
+    "severity",
+    "isThreat",
+    "threatType",
+    "indicators",
+    "reasoning"
+  ],
+  "prompt_sha256": "8906351f16374f4fb7d794d5c6eba0e872892e3d263e24cc356db0773ce6215a",
+  "prompt_variant": "strict"
+}
