@@ -23,7 +23,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { Classification } from "./types";
-import { CONTRACT } from "./contract";
+import { CONTRACT } from "./contractSpec";
 
 const INDICATOR_VOCAB = new Set(CONTRACT.indicators);
 const EXCULPATORY = new Set(CONTRACT.exculpatory_indicators);

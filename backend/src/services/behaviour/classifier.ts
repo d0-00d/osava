@@ -11,7 +11,7 @@
 //     margin. Ollama never exposed that.
 // ─────────────────────────────────────────────────────────────
 
-import { CONTRACT } from "./contract";
+import { CONTRACT } from "./contractSpec";
 import { guardClassification } from "./guard";
 import type { Classification, Severity, Verdict } from "./types";
 

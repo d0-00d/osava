@@ -20,8 +20,13 @@ const CONFIG_SHA256 = "055febc600e6d7448cdf3812307275912927a62b1f94d0d933b64b294
 const EVENT_LOG_READERS = "S-1-5-32-573";
 
 export async function sysmonStatus(): Promise<{ installed: boolean; running: boolean }> {
+  // A machine has Sysmon64 or Sysmon, never both, so one name is always missing.
+  // SilentlyContinue hides that error but still fails the command, and
+  // powershell.exe then exits 1 -- execFile rejects and discards the valid
+  // result. Exit 0 explicitly; "not installed" is the empty output, not a failure.
   const { stdout } = await ps(
-    "Get-Service Sysmon64,Sysmon -ErrorAction SilentlyContinue | Select-Object -First 1 Status | ConvertTo-Json");
+    "$s = Get-Service Sysmon64,Sysmon -ErrorAction SilentlyContinue | Select-Object -First 1 Status; " +
+    "if ($s) { $s | ConvertTo-Json }; exit 0");
   const s = stdout.trim() ? JSON.parse(stdout) : null;
   // Status serialises as an enum number; 4 is Running.
   return { installed: !!s, running: !!s && (s.Status === 4 || s.Status === "Running") };
