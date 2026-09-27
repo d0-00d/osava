@@ -19,6 +19,7 @@
     "compile": "npm run bundle && pkg dist/backend.cjs --targets node22-win-x64 --output ../src-tauri/binaries/osava-backend-x86_64-pc-windows-msvc.exe",
     "test": "echo \"Error: no test specified\" && exit 1",
     "parity": "esbuild scripts/parity-convert.ts --bundle --platform=node --format=cjs --outfile=dist/parity.cjs --log-level=warning && node dist/parity.cjs",
+    "parity-explain": "esbuild scripts/parity-explain.ts --bundle --platform=node --format=cjs --outfile=dist/parity-explain.cjs --log-level=warning && node dist/parity-explain.cjs",
     "selftest": "esbuild scripts/selftest.ts --bundle --platform=node --format=cjs --outfile=dist/selftest.cjs --log-level=warning && node dist/selftest.cjs",
     "eval-llama": "esbuild scripts/eval-llama.ts --bundle --platform=node --format=cjs --outfile=dist/eval-llama.cjs --log-level=warning && node dist/eval-llama.cjs"
   },
