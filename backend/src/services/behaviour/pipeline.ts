@@ -3,7 +3,7 @@
 // machine's 52,791 benign events collapsed to 1,788 signatures, so after a
 // warm-up the model is called on a small fraction of what Sysmon produces.
 
-import { CONTRACT } from "./contract";
+import { CONTRACT } from "./contractSpec";
 import { classify } from "./classifier";
 import { toContractBody } from "./convert";
 import { readSysmon, type LogRecord } from "./reader";

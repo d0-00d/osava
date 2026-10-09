@@ -16,7 +16,7 @@
 // mismatch that already shipped once through Ollama.
 // ─────────────────────────────────────────────────────────────
 
-import { CONTRACT } from "./contract";
+import { CONTRACT } from "./contractSpec";
 import { explain, type Cls } from "./explain";
 import { parseBody } from "./signature";
 import type { Severity, Verdict } from "./types";

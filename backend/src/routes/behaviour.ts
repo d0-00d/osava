@@ -1,6 +1,6 @@
 import express from "express";
 import { existsSync } from "node:fs";
-import { CONTRACT } from "../services/behaviour/contract";
+import { CONTRACT } from "../services/behaviour/contractSpec";
 import { reviewReason } from "../services/behaviour/classifier";
 import { monitor, probeLog } from "../services/behaviour/instance";
 import { scanOnce, scanning } from "../services/behaviour/pipeline";

@@ -15,7 +15,7 @@
 // whitespace set (pystr.ts); lengths count code points.
 // ─────────────────────────────────────────────────────────────
 
-import { CONTRACT } from "./contract";
+import { CONTRACT } from "./contractSpec";
 import { pyInt } from "./signature";
 import { PY_WS, pyLen, pySlice, pySplitWs } from "./pystr";
 

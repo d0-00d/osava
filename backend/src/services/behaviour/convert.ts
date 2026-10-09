@@ -9,7 +9,7 @@
 // detail feeds the model inputs it never learned from — silently.
 // ─────────────────────────────────────────────────────────────
 
-import { CONTRACT } from "./contract";
+import { CONTRACT } from "./contractSpec";
 import { pyLen, pySlice, pyStrip } from "./pystr";
 
 const C = CONTRACT.conversion;

@@ -14,7 +14,7 @@ import fs from "node:fs";
 import http from "node:http";
 import test from "node:test";
 import { classify, reviewReason } from "../src/services/behaviour/classifier";
-import { CONTRACT } from "../src/services/behaviour/contract";
+import { CONTRACT } from "../src/services/behaviour/contractSpec";
 import { createMonitor, MAX_FAILURES, type MonitorDeps } from "../src/services/behaviour/monitor";
 import { PAGE, scanOnce, type ScanSummary, type Source } from "../src/services/behaviour/pipeline";
 import { LogAccessDenied, LogMissing, type LogRecord } from "../src/services/behaviour/reader";
@@ -391,4 +391,17 @@ test("origin guard: a DNS-rebound or LAN Host is refused", () => {
     assert.equal(guard({ host }).nexted, false, `host ${JSON.stringify(host)}`);
   }
   assert.equal(guard({}).nexted, false, "no Host header at all");
+});
+
+// ── module resolution ──────────────────────────────────────────────────────
+
+test("no module shares its basename with a data file (ts-node-dev would load the .json)", () => {
+  // require("./x") tries .json before the .ts that ts-node registers. contract.ts next to contract.json made
+  // CONTRACT undefined under `npm run dev`, while tsc, esbuild and pkg -- and so every other test -- were fine.
+  // Runs from backend/ (npm run unit), so "src" is the source tree.
+  const files = fs.readdirSync("src", { recursive: true }).map((f) => String(f).replace(/\\/g, "/"));
+  const stems = (ext: RegExp) => new Set(files.filter((f) => ext.test(f)).map((f) => f.replace(ext, "")));
+  const json = stems(/\.json$/);
+  const clash = [...stems(/\.tsx?$/)].filter((s) => json.has(s));
+  assert.deepEqual(clash, [], `these modules share a name with a .json file: ${clash.join(", ")}`);
 });

@@ -18,7 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { CONTRACT } from "./contract";
+import { CONTRACT } from "./contractSpec";
 import { classify } from "./classifier";
 
 const execFileAsync = promisify(execFile);
