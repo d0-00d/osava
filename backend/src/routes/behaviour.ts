@@ -5,8 +5,9 @@ import { reviewReason } from "../services/behaviour/classifier";
 import { monitor, probeLog } from "../services/behaviour/instance";
 import { scanOnce, scanning } from "../services/behaviour/pipeline";
 import { LogAccessDenied, LogMissing, probeSysmon } from "../services/behaviour/reader";
+import { cancelInstall, installState, startInstall } from "../services/behaviour/installer";
 import {
-  MODEL_PATH, ModelUnavailable, SERVER_EXE, installModel, installServer, isHealthy, startServer,
+  MODEL_PATH, ModelUnavailable, SERVER_EXE, deviceUsed, isHealthy, modelVerified, startServer,
 } from "../services/behaviour/runtime";
 import { readState } from "../services/behaviour/store";
 import { ElevationDenied, installSysmon, sysmonStatus, type SysmonService } from "../services/behaviour/sysmonInstall";
@@ -50,7 +51,13 @@ router.get("/api/behaviour/status", async (_req, res) => {
     }
     res.json({
       sysmon: await sysmonInfo(),
-      runtime: { serverInstalled: existsSync(SERVER_EXE), modelInstalled: existsSync(MODEL_PATH), running: await isHealthy() },
+      // modelInstalled means present AND verified; a file someone copied in by hand is `modelPresent` until
+      // Install checks it. `device` is where the running (or last) server ran: "cpu" is the fallback.
+      runtime: {
+        serverInstalled: existsSync(SERVER_EXE), modelPresent: existsSync(MODEL_PATH), modelInstalled: await modelVerified(),
+        running: await isHealthy(), device: deviceUsed(),
+      },
+      install: installState(),
       model: { ...CONTRACT.model, promptVariant: CONTRACT.prompt_variant, contract: CONTRACT.schema_version },
       monitor: monitor.state(),
       scanning: scanning(),
@@ -76,18 +83,15 @@ router.post("/api/behaviour/install-sysmon", async (_req, res) => {
   }
 });
 
-// Two clicks must not start two downloads into the same file.
-let runtimeInstall: Promise<{ modelSource: string }> | null = null;
-router.post("/api/behaviour/install-runtime", async (_req, res) => {
-  try {
-    runtimeInstall ??= (async () => {
-      await installServer();
-      return { modelSource: await installModel() };
-    })().finally(() => { runtimeInstall = null; });
-    res.json(await runtimeInstall);
-  } catch (e) {
-    fail(res, e);
-  }
+// Installing is a background job (it is ~2 GB): this starts it, or joins the one running, and
+// returns at once. Progress is `install` in /status.
+router.post("/api/behaviour/install-runtime", (_req, res) => {
+  res.status(202).json(startInstall());
+});
+
+// Stops it, keeping the partial download; pressing Install again resumes.
+router.post("/api/behaviour/install-runtime/cancel", (_req, res) => {
+  res.json(cancelInstall());
 });
 
 router.post("/api/behaviour/scan", async (req, res) => {

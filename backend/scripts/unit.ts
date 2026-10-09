@@ -12,6 +12,8 @@ import "./unit-env";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { classify, reviewReason } from "../src/services/behaviour/classifier";
 import { CONTRACT } from "../src/services/behaviour/contractSpec";
@@ -21,6 +23,10 @@ import { LogAccessDenied, LogMissing, type LogRecord } from "../src/services/beh
 import { ModelUnavailable } from "../src/services/behaviour/runtime";
 import { readState } from "../src/services/behaviour/store";
 import { ALLOWED_ORIGINS, localOnly } from "../src/routes/localOnly";
+import { download, DownloadError } from "../src/services/behaviour/download";
+import { cancelInstall, installDone, installState, startInstall } from "../src/services/behaviour/installer";
+import { LLM_DIR, MODEL_PATH, installModel, modelVerified } from "../src/services/behaviour/runtime";
+import { createHash } from "node:crypto";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(cond: () => boolean, ms = 2000): Promise<void> {
@@ -404,4 +410,296 @@ test("no module shares its basename with a data file (ts-node-dev would load the
   const json = stems(/\.json$/);
   const clash = [...stems(/\.tsx?$/)].filter((s) => json.has(s));
   assert.deepEqual(clash, [], `these modules share a name with a .json file: ${clash.join(", ")}`);
+});
+
+
+// ── download ───────────────────────────────────────────────────────────────
+
+type Action =
+  | { kind: "ok" }
+  | { kind: "ignoreRange" }
+  | { kind: "drop"; after: number }       // send `after` bytes, then close the connection cleanly (FIN)
+  | { kind: "reset"; after: number }      // send `after` bytes, then reset it (RST): the client may lose what it had not read
+  | { kind: "stall"; after: number }
+  | { kind: "status"; code: number; headers?: Record<string, string> };
+
+/** A file server that misbehaves on request: plan(n, from) says what to do with the n-th request. */
+async function serve(body: Buffer, plan: (n: number, from: number | null) => Action) {
+  const requests: { range: string | null }[] = [];
+  const srv = http.createServer((req, res) => {
+    const n = requests.length;
+    const range = req.headers.range ?? null;
+    requests.push({ range });
+    const m = range ? /^bytes=(\d+)-$/.exec(range) : null;
+    const from = m ? Number(m[1]) : null;
+    const a = plan(n, from);
+    if (a.kind === "status") { res.writeHead(a.code, a.headers ?? {}); res.end(); return; }
+    const honour = a.kind !== "ignoreRange" && from !== null && from > 0;
+    const slice = honour ? body.subarray(from!) : body;
+    if (honour) res.writeHead(206, { "Content-Range": `bytes ${from}-${body.length - 1}/${body.length}`, "Content-Length": String(slice.length) });
+    else res.writeHead(200, { "Content-Length": String(slice.length) });
+    if (a.kind === "drop" || a.kind === "reset" || a.kind === "stall") {
+      res.write(slice.subarray(0, a.after));
+      if (a.kind === "drop") setTimeout(() => res.socket?.end(), 20);
+      if (a.kind === "reset") setTimeout(() => res.socket?.destroy(), 20);
+      return;                                     // "stall": say nothing more and keep the socket open
+    }
+    res.end(slice);
+  });
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  const port = (srv.address() as { port: number }).port;
+  return {
+    url: `http://127.0.0.1:${port}/file.bin`, requests,
+    close: () => { srv.closeAllConnections(); srv.close(); },
+  };
+}
+
+const PAYLOAD = Buffer.from(Array.from({ length: 300_000 }, (_, i) => (i * 7 + (i >> 8)) & 0xff));
+const FAST_DL = { stallMs: 150, retryMs: 5 };
+const tmpdir = () => fs.mkdtempSync(path.join(os.tmpdir(), "osava-dl-"));
+
+test("download: fetches a file and reports progress up to the full size", async () => {
+  const s = await serve(PAYLOAD, () => ({ kind: "ok" }));
+  const dest = path.join(tmpdir(), "a.bin");
+  const seen: [number, number | null][] = [];
+  try {
+    await download(s.url, dest, { ...FAST_DL, onProgress: (r, t) => seen.push([r, t]) });
+    assert.deepEqual(fs.readFileSync(dest), PAYLOAD);
+    assert.equal(fs.existsSync(`${dest}.part`), false, "the partial file is renamed away");
+    assert.deepEqual(seen.at(-1), [PAYLOAD.length, PAYLOAD.length]);
+    assert.ok(seen.every(([r], i) => i === 0 || r >= seen[i - 1]![0]), "progress never goes backwards");
+  } finally { s.close(); }
+});
+
+test("download: a dropped connection resumes from the partial file with a Range request", async () => {
+  const s = await serve(PAYLOAD, (n) => (n === 0 ? { kind: "drop", after: 100_000 } : { kind: "ok" }));
+  const dest = path.join(tmpdir(), "b.bin");
+  try {
+    await download(s.url, dest, FAST_DL);
+    assert.deepEqual(fs.readFileSync(dest), PAYLOAD, "the stitched file is byte-identical");
+    assert.equal(s.requests.length, 2);
+    const from = Number(/^bytes=(\d+)-$/.exec(s.requests[1]!.range ?? "")?.[1]);
+    assert.ok(from > 0 && from < PAYLOAD.length, `the retry asked for the rest, not everything (${s.requests[1]!.range})`);
+  } finally { s.close(); }
+});
+
+test("download: an abrupt reset, which may lose what had not been read yet, still ends in a correct file", async () => {
+  const s = await serve(PAYLOAD, (n) => (n === 0 ? { kind: "reset", after: 100_000 } : { kind: "ok" }));
+  const dest = path.join(tmpdir(), "b2.bin");
+  try {
+    await download(s.url, dest, FAST_DL);
+    assert.deepEqual(fs.readFileSync(dest), PAYLOAD);
+    assert.equal(s.requests.length, 2, "one retry");
+    // Whether the retry could resume depends on how much the reset let through; either way it is whole.
+    const r = s.requests[1]!.range;
+    assert.ok(r === null || /^bytes=\d+-$/.test(r), `unexpected Range header ${r}`);
+  } finally { s.close(); }
+});
+
+test("download: a server that ignores Range makes it start over, and it still finishes correctly", async () => {
+  const s = await serve(PAYLOAD, (n) => (n === 0 ? { kind: "drop", after: 50_000 } : { kind: "ignoreRange" }));
+  const dest = path.join(tmpdir(), "c.bin");
+  try {
+    await download(s.url, dest, FAST_DL);
+    assert.deepEqual(fs.readFileSync(dest), PAYLOAD, "no half-file glued onto a full one");
+  } finally { s.close(); }
+});
+
+test("download: a stalled connection is abandoned and resumed instead of hanging", async () => {
+  const s = await serve(PAYLOAD, (n) => (n === 0 ? { kind: "stall", after: 60_000 } : { kind: "ok" }));
+  const dest = path.join(tmpdir(), "d.bin");
+  const t0 = Date.now();
+  try {
+    await download(s.url, dest, FAST_DL);
+    assert.deepEqual(fs.readFileSync(dest), PAYLOAD);
+    assert.ok(Date.now() - t0 < 5_000, "it did not wait out the stall");
+  } finally { s.close(); }
+});
+
+test("download: a 404 is final, a 503 is retried", async () => {
+  const gone = await serve(PAYLOAD, () => ({ kind: "status", code: 404 }));
+  try {
+    await assert.rejects(download(gone.url, path.join(tmpdir(), "e.bin"), FAST_DL),
+      (e: unknown) => e instanceof DownloadError && e.kind === "HTTP" && e.status === 404);
+    assert.equal(gone.requests.length, 1, "no point asking again");
+  } finally { gone.close(); }
+
+  const flaky = await serve(PAYLOAD, (n) => (n < 2 ? { kind: "status", code: 503 } : { kind: "ok" }));
+  const dest = path.join(tmpdir(), "f.bin");
+  try {
+    await download(flaky.url, dest, FAST_DL);
+    assert.deepEqual(fs.readFileSync(dest), PAYLOAD);
+    assert.equal(flaky.requests.length, 3);
+  } finally { flaky.close(); }
+});
+
+test("download: gives up after repeated failures that make no progress", async () => {
+  const s = await serve(PAYLOAD, () => ({ kind: "status", code: 500 }));
+  try {
+    await assert.rejects(download(s.url, path.join(tmpdir(), "g.bin"), { ...FAST_DL, attempts: 3 }),
+      (e: unknown) => e instanceof DownloadError && e.kind === "HTTP" ? false : e instanceof DownloadError && e.kind === "NETWORK");
+    assert.equal(s.requests.length, 3);
+  } finally { s.close(); }
+});
+
+test("download: refuses a drive without room, before a byte is written", async () => {
+  const s = await serve(PAYLOAD, () => ({ kind: "ok" }));
+  const dest = path.join(tmpdir(), "h.bin");
+  try {
+    await assert.rejects(download(s.url, dest, { ...FAST_DL, freeBytes: async () => 1_000 }),
+      (e: unknown) => e instanceof DownloadError && e.kind === "NO_SPACE" && /free disk space/.test(e.message));
+    assert.equal(fs.existsSync(`${dest}.part`), false);
+    assert.equal(s.requests.length, 1, "no retry loop on a full disk");
+  } finally { s.close(); }
+});
+
+test("download: cancelling keeps the partial file, and the next call resumes it", async () => {
+  const s = await serve(PAYLOAD, () => ({ kind: "ok" }));
+  const dest = path.join(tmpdir(), "i.bin");
+  const ctl = new AbortController();
+  try {
+    await assert.rejects(download(s.url, dest, { ...FAST_DL, signal: ctl.signal, onProgress: (r) => { if (r > 10_000) ctl.abort(); } }),
+      (e: unknown) => e instanceof DownloadError && e.kind === "CANCELLED");
+    const kept = fs.statSync(`${dest}.part`).size;
+    assert.ok(kept > 0 && kept < PAYLOAD.length, "something was kept, but not everything");
+    await download(s.url, dest, FAST_DL);
+    assert.deepEqual(fs.readFileSync(dest), PAYLOAD);
+    assert.equal(s.requests.at(-1)!.range, `bytes=${kept}-`, "the second call resumed exactly where the first stopped");
+  } finally { s.close(); }
+});
+
+test("download: a partial file that is already whole is accepted without fetching it again", async () => {
+  const s = await serve(PAYLOAD, () => ({ kind: "status", code: 416, headers: { "Content-Range": `bytes */${PAYLOAD.length}` } }));
+  const dest = path.join(tmpdir(), "j.bin");
+  fs.writeFileSync(`${dest}.part`, PAYLOAD);
+  try {
+    await download(s.url, dest, FAST_DL);
+    assert.deepEqual(fs.readFileSync(dest), PAYLOAD);
+    assert.equal(s.requests.length, 1);
+  } finally { s.close(); }
+});
+
+
+// ── installing the model ───────────────────────────────────────────────────
+
+const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+
+/** Point the contract at a small stand-in "model" served locally, run `fn`, and put the contract back. */
+async function withFakeModel(body: Buffer, served: Buffer, fn: (s: Awaited<ReturnType<typeof serve>>) => Promise<void>) {
+  const s = await serve(served, () => ({ kind: "ok" }));
+  const m = CONTRACT.model;
+  const saved = { ...m };
+  fs.rmSync(LLM_DIR, { recursive: true, force: true });
+  m.gguf_sha256 = sha(body); m.gguf_bytes = body.length; m.url = s.url;
+  try { await fn(s); } finally { Object.assign(m, saved); if (saved.url === undefined) delete m.url; s.close(); }
+}
+
+test("installModel: downloads, verifies, remembers, and is instant the second time", async () => {
+  await withFakeModel(PAYLOAD, PAYLOAD, async (s) => {
+    const labels = new Set<string>(); let last: [number, number | null] = [0, null];
+    assert.equal(await modelVerified(), false, "nothing there yet");
+    const how = await installModel({ report: (l, d, t) => { labels.add(l); if (l.startsWith("Downloading")) last = [d, t]; } });
+    assert.equal(how, "download");
+    assert.deepEqual(fs.readFileSync(MODEL_PATH), PAYLOAD);
+    assert.deepEqual(last, [PAYLOAD.length, PAYLOAD.length]);
+    assert.ok(labels.has("Downloading the model") && labels.has("Checking the model file"));
+    assert.equal(await modelVerified(), true);
+
+    const before = s.requests.length;
+    assert.equal(await installModel(), "present");
+    assert.equal(s.requests.length, before, "a verified file is not fetched, or even re-hashed, again");
+  });
+});
+
+test("installModel: a file copied in by hand is present but unverified until Install checks it", async () => {
+  await withFakeModel(PAYLOAD, PAYLOAD, async (s) => {
+    fs.mkdirSync(LLM_DIR, { recursive: true });
+    fs.writeFileSync(MODEL_PATH, PAYLOAD);
+    assert.equal(fs.existsSync(MODEL_PATH), true);
+    assert.equal(await modelVerified(), false, "present is not the same as verified");
+    assert.equal(await installModel(), "present");
+    assert.equal(await modelVerified(), true);
+    assert.equal(s.requests.length, 0, "the right file was already there; nothing was downloaded");
+  });
+});
+
+test("installModel: a corrupted or swapped file is replaced, not trusted", async () => {
+  await withFakeModel(PAYLOAD, PAYLOAD, async () => {
+    assert.equal(await installModel(), "download");
+    // same size, different bytes, new mtime: exactly what a bad copy looks like
+    const bad = Buffer.from(PAYLOAD); bad[1000] = ~(PAYLOAD[1000] ?? 0) & 0xff;
+    fs.writeFileSync(MODEL_PATH, bad);
+    fs.utimesSync(MODEL_PATH, new Date(), new Date(Date.now() + 5_000));
+    assert.equal(await modelVerified(), false, "the record is keyed on size and mtime, so the swap is noticed");
+    assert.equal(await installModel(), "download", "and it is fetched again");
+    assert.deepEqual(fs.readFileSync(MODEL_PATH), PAYLOAD);
+  });
+});
+
+test("installModel: a download that is not the expected file is deleted and reported", async () => {
+  const wrong = Buffer.from(PAYLOAD); wrong[5] = ~(PAYLOAD[5] ?? 0) & 0xff;
+  await withFakeModel(PAYLOAD, wrong, async () => {
+    await assert.rejects(installModel(), /did not match its checksum and was deleted/);
+    assert.equal(fs.existsSync(MODEL_PATH), false);
+    assert.equal(await modelVerified(), false);
+  });
+});
+
+test("installModel: with no file and no URL it says exactly what to do", async () => {
+  await withFakeModel(PAYLOAD, PAYLOAD, async () => {
+    delete CONTRACT.model.url;
+    await assert.rejects(installModel(), (e: unknown) => e instanceof ModelUnavailable && /Put osava-smollm-q4\.gguf/.test(e.message) && e.message.includes(LLM_DIR));
+  });
+});
+
+// ── the install job ────────────────────────────────────────────────────────
+
+test("install job: runs both steps in order, reports progress, and ends done", async () => {
+  const order: string[] = [];
+  startInstall({
+    server: async (h) => { order.push("server"); h.report?.("Downloading llama.cpp", 10, 100); assert.equal(installState().phase, "running"); assert.equal(installState().label, "Downloading llama.cpp"); },
+    model: async (h) => { order.push("model"); h.report?.("Downloading the model", 50, 100); assert.equal(installState().received, 50); },
+  });
+  await installDone();
+  assert.deepEqual(order, ["server", "model"]);
+  assert.deepEqual([installState().phase, installState().error], ["done", null]);
+});
+
+test("install job: pressing Install again while it runs joins it instead of starting a second", async () => {
+  let calls = 0; let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const steps = { server: async () => { calls++; await gate; }, model: async () => {} };
+  startInstall(steps);
+  startInstall(steps);
+  startInstall(steps);
+  release();
+  await installDone();
+  assert.equal(calls, 1);
+});
+
+test("install job: a failure is kept, with a code the UI can act on", async () => {
+  startInstall({ server: async () => {}, model: async () => { throw new ModelUnavailable("not installed"); } });
+  await installDone();
+  assert.deepEqual(installState().error, { code: "MODEL_UNAVAILABLE", message: "not installed" });
+  assert.equal(installState().phase, "error");
+  startInstall({ server: async () => { throw new DownloadError("NO_SPACE", "Not enough free disk space"); }, model: async () => {} });
+  await installDone();
+  assert.equal(installState().error?.code, "NO_SPACE");
+});
+
+test("install job: stopping it is not a failure, and says what happens next", async () => {
+  startInstall({
+    server: (h) => new Promise((_, reject) => h.signal?.addEventListener("abort", () => reject(new DownloadError("CANCELLED", "Cancelled.")))),
+    model: async () => {},
+  });
+  assert.equal(installState().phase, "running");
+  cancelInstall();
+  await installDone();
+  assert.equal(installState().phase, "idle");
+  assert.equal(installState().error, null);
+  assert.match(installState().label, /Stopped.*continues from there/);
+  // and it can be started again
+  startInstall({ server: async () => {}, model: async () => {} });
+  await installDone();
+  assert.equal(installState().phase, "done");
 });

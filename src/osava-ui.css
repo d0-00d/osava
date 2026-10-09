@@ -512,3 +512,21 @@
 }
 .osv-about ul { margin: 12px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .osv-about li { font-family: var(--osv-mono); font-size: 12px; line-height: 1.55; color: var(--osv-text-secondary); }
+
+/* The model install: what is being fetched, how far, and a bar that says so honestly. */
+.osv-progress { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.osv-progress-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: var(--osv-mono);
+  font-size: 11.5px;
+  color: var(--osv-text-secondary);
+}
+.osv-progress-bar { height: 6px; background: rgba(202, 197, 202, 0.12); border-radius: 2px; overflow: hidden; }
+.osv-progress-bar > span { display: block; height: 100%; width: 0; background: var(--osv-teal); transition: width 0.4s linear; }
+/* No total yet (or unpacking): a sliding marker, not a bar pretending to know how far along it is. */
+.osv-progress-bar--wait > span { width: 30%; animation: osv-slide 1.4s ease-in-out infinite; }
+@keyframes osv-slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+.osv-step-desc--warn { color: var(--osv-warn); }

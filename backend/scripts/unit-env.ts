@@ -8,3 +8,8 @@ import path from "node:path";
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "osava-unit-"));
 process.env["OSAVA_STATE_FILE"] = path.join(dir, "behaviour.json");
 process.env["OSAVA_LLM_PORT"] = "18089";
+// runtime.ts puts the model under ~/.osava/llm; tests must never see (or touch) the real one.
+const home = path.join(dir, "home");
+fs.mkdirSync(home, { recursive: true });
+process.env["HOME"] = home;
+process.env["USERPROFILE"] = home;

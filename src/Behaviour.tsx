@@ -49,6 +49,15 @@ type Monitor = {
   error: { code: string; message: string; at: string; fatal: boolean } | null;
 };
 
+/** The model-runtime install job: it runs in the backend, so any page that looks sees the same progress. */
+type Install = {
+  phase: "idle" | "running" | "done" | "error";
+  label: string;
+  received: number;
+  total: number | null;
+  error: { code: string; message: string } | null;
+};
+
 type Status = {
   sysmon: {
     installed: boolean; running: boolean;
@@ -56,7 +65,17 @@ type Status = {
     group: "member" | "not-member" | "unknown";
     log: "readable" | "denied" | "missing" | "unknown";
   };
-  runtime: { serverInstalled: boolean; modelInstalled: boolean; running: boolean };
+  runtime: {
+    serverInstalled: boolean;
+    /** a file is in place (perhaps copied by hand); not necessarily the right one yet */
+    modelPresent: boolean;
+    /** present AND checked against the checksum this OSAVA was built for */
+    modelInstalled: boolean;
+    running: boolean;
+    /** where the running (or last) model server ran; "cpu" is the fallback when the GPU path failed */
+    device: "gpu" | "cpu" | null;
+  };
+  install: Install;
   model: { name?: string; gguf_sha256?: string; gguf_bytes?: number; quantisation?: string; promptVariant: string; contract: string };
   monitor: Monitor;
   scanning: boolean;
@@ -121,6 +140,7 @@ function ago(iso: string | null): string {
 }
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
+const fmtBytes = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`);
 const words = (s: string) => s.replace(/_/g, " ");
 
 function Notice({ tone, children }: { tone: Tone; children: React.ReactNode }) {
@@ -241,7 +261,7 @@ export default function Behaviour() {
 
   useEffect(() => { void loadVerdicts(view); }, [view, loadVerdicts]);
 
-  const active = !!status && (status.monitor.phase !== "off" || status.scanning);
+  const active = !!status && (status.monitor.phase !== "off" || status.scanning || status.install.phase === "running");
   useEffect(() => {
     void refresh();
     const t = setInterval(() => void refresh(), active ? 1500 : 4000);
@@ -263,12 +283,12 @@ export default function Behaviour() {
       : { tone: "warn", text: r.body?.error ?? "The Sysmon install failed." });
   });
 
+  // Starting the install returns at once; progress and any failure come back through /status.
   const installRuntime = () => run("runtime", async () => {
-    const r = await call<{ modelSource?: string }>("/install-runtime", "POST");
-    setNotice(r.ok
-      ? { tone: "ok", text: "The model runtime is installed and verified." }
-      : { tone: "warn", text: r.body?.error ?? "The model install failed." });
+    const r = await call<Install>("/install-runtime", "POST");
+    if (!r.ok) setNotice({ tone: "warn", text: r.body?.error ?? "The model install could not be started." });
   });
+  const stopInstall = () => run("runtime", async () => { await call("/install-runtime/cancel", "POST"); });
 
   const startMonitoring = () => run("monitor", async () => {
     await call("/monitor/start", "POST");
@@ -296,6 +316,9 @@ export default function Behaviour() {
   const needsGrant = logDenied && status?.sysmon.group !== "member";
   const needsSignOut = logDenied && status?.sysmon.group === "member";
   const modelReady = !!status && status.runtime.serverInstalled && status.runtime.modelInstalled;
+  const installing = status?.install.phase === "running";
+  const installPct = installing && status?.install.total
+    ? Math.min(100, Math.round((status.install.received / status.install.total) * 100)) : null;
   const ready = sysmonReady && modelReady;
   const m = status?.monitor;
   const monitoring = !!m && m.phase !== "off";
@@ -315,7 +338,7 @@ export default function Behaviour() {
 
   const liveText = !status || !m ? "" :
     m.phase === "checking" ? "Checking that the Sysmon log can be read…" :
-    m.phase === "starting" ? (status.runtime.running ? "Checking the model…" : "Loading the model — the first start takes about ten seconds…") :
+    m.phase === "starting" ? (status.runtime.running ? "Checking the model…" : "Loading the model: usually ten seconds, up to a minute or two the first time while Windows checks the new files…") :
     m.phase === "scanning" ? "Reading the log and judging new behaviours…" :
     m.phase === "waiting" ? (m.lastScan?.more
       ? "Catching up on a backlog of log records…"
@@ -381,24 +404,50 @@ export default function Behaviour() {
                 {status.model.name ?? "osava-smollm"} ({status.model.quantisation ?? "quantised"}, about{" "}
                 {status.model.gguf_bytes ? (status.model.gguf_bytes / 1e9).toFixed(1) : "2"} GB) runs on this PC through llama.cpp.
                 Both downloads are checked against fixed checksums, and nothing you scan leaves the machine.
+                {status.runtime.modelPresent && !status.runtime.modelInstalled && !installing &&
+                  " A model file is already in place; Install model will check it, which takes about ten seconds."}
               </p>
+              {installing && (
+                <div className="osv-progress" role="progressbar" aria-label={status.install.label}
+                     aria-valuenow={installPct ?? undefined} aria-valuemin={0} aria-valuemax={100}>
+                  <div className="osv-progress-row">
+                    <span>{status.install.label}</span>
+                    <span>
+                      {status.install.total
+                        ? `${fmtBytes(status.install.received)} of ${fmtBytes(status.install.total)} · ${installPct}%`
+                        : status.install.received ? fmtBytes(status.install.received) : ""}
+                    </span>
+                  </div>
+                  <div className={`osv-progress-bar${installPct === null ? " osv-progress-bar--wait" : ""}`}>
+                    <span style={installPct === null ? undefined : { width: `${installPct}%` }} />
+                  </div>
+                </div>
+              )}
+              {!installing && status.install.error && (
+                <p className="osv-step-desc osv-step-desc--warn">{status.install.error.message}</p>
+              )}
+              {!installing && !status.install.error && status.install.phase === "idle" && status.install.label && (
+                <p className="osv-step-desc">{status.install.label}</p>
+              )}
             </div>
             <div className="osv-step-side">
-              <StatusPill tone={modelReady ? "ok" : "neutral"}>{modelReady ? "Installed" : "Not installed"}</StatusPill>
-              {!modelReady && (
+              <StatusPill tone={installing ? "warn" : modelReady ? "ok" : "neutral"}>
+                {installing ? "Installing" : modelReady ? "Installed" : "Not installed"}
+              </StatusPill>
+              {installing ? (
+                <button className="osv-btn" onClick={stopInstall} disabled={busy !== null}>Stop</button>
+              ) : !modelReady && (
                 <button className="osv-btn osv-btn--primary" onClick={installRuntime} disabled={busy !== null}>
-                  {busy === "runtime" ? "Installing…" : "Install model"}
+                  {status.install.error ? "Retry" : "Install model"}
                 </button>
               )}
             </div>
           </div>
 
-          {busy && (busy === "sysmon" || busy === "runtime") && (
+          {busy === "sysmon" && (
             <div className="osv-live">
               <span className="osv-dot osv-dot--live" aria-hidden />
-              {busy === "sysmon"
-                ? "Approve the Windows permission (UAC) prompt to continue. The window may look idle while it works."
-                : "Downloading and verifying. This can take several minutes."}
+              Approve the Windows permission (UAC) prompt to continue. The window may look idle while it works.
             </div>
           )}
         </div>
@@ -427,6 +476,12 @@ export default function Behaviour() {
             <span className={`osv-dot${liveDot}`} aria-hidden />
             {liveText}
           </div>
+          {status.runtime.running && status.runtime.device === "cpu" && (
+            <p className="osv-fine" style={{ marginTop: 8 }}>
+              The model is running on the CPU, so each new behaviour takes about a second or more. That is the
+              fallback: the graphics path did not start or did not pass its check on this PC.
+            </p>
+          )}
 
           <div className="osv-kpis">
             <Kpi label="Behaviours judged" value={total} note="each judged once, then counted" />

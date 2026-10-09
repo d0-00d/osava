@@ -19,7 +19,7 @@ import contractJson from "./contract.json";
 
 export interface Contract {
   schema_version: string;
-  model: { name?: string; gguf_sha256?: string; gguf_bytes?: number; quantisation?: string };
+  model: { name?: string; gguf_sha256?: string; gguf_bytes?: number; quantisation?: string; url?: string };
   input: {
     field_order: string[];
     max_cmdline: number;
