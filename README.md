@@ -25,7 +25,7 @@ Open the **Behaviour** tab. A small language model reads Sysmon events on this P
 
 **Setup (once)**
 
-1. **Sysmon**: press *Install Sysmon*. OSAVA installs it with a pinned, checksummed configuration and asks for administrator permission once. It also adds you to *Event Log Readers*, so OSAVA itself never has to run as admin. Windows applies that at your **next sign-in**: sign out and back in once.
+1. **Sysmon**: press *Install Sysmon*. OSAVA installs it with a pinned, checksummed configuration and asks for administrator permission once. It also adds you to *Event Log Readers*, so OSAVA itself never has to run as admin. Windows applies that at your **next sign-in**: sign out and back in once. If Sysmon is already installed (put there by hand, say) but you are not in that group, the button reads *Grant log access* and does only that step; signing out alone would never help.
 2. **Local model**: press *Install model*. OSAVA downloads a pinned llama.cpp build and checks both it and the model file against fixed checksums. The model (`osava-smollm-q4.gguf`, 1.9 GB, SHA-256 `9ab1eba2…3d51`) is not bundled: put it in `%USERPROFILE%\.osava\llm\` (an Ollama store is also checked), or set `OSAVA_MODEL_URL` to a download for it.
 3. **Start monitoring** (or *Scan once*). Everything runs on this PC; events and verdicts are kept in `%USERPROFILE%\.osava\` and are never sent anywhere.
 
@@ -114,24 +114,20 @@ Once compiled, Osava produces standalone Windows installer packages located in `
 
 ### Development Mode
 
-To run the full desktop application in development mode with hot-reloading:
+Run the app from **Windows** (PowerShell or Windows Terminal), not from WSL. The Tauri shell needs the Windows Rust (MSVC) toolchain, and the backend uses PowerShell, the Windows event log and `%USERPROFILE%\.osava`. Under WSL, `npm run tauri dev` stops at `failed to run 'cargo metadata'` because there is no Rust there, and a backend running there would look for the model in the wrong home directory. Install dependencies with Windows' `npm` in the Windows checkout (`node_modules` installed under WSL holds Linux binaries). Editing, `tsc` and `npm run unit` work anywhere.
 
-```bash
-# From the root directory:
-npm run dev
-```
+The debug build of the desktop shell does not start the backend sidecar, so run the two pieces yourself:
 
-To run the backend and frontend servers separately:
-
-```bash
+```powershell
 # Terminal 1: Backend API (http://localhost:4000)
 cd backend
 npm run dev
 
-# Terminal 2: Frontend Vite app (http://localhost:1420)
-cd ..
-npm run dev
+# Terminal 2: the desktop app. It starts Vite (http://localhost:1420) itself, then opens the window.
+npm run tauri dev
 ```
+
+To work on the UI alone in a browser, `npm run dev` from the root starts only Vite. To try Behaviour triage right away without signing out first, start the backend terminal elevated ("Run as administrator"): an administrator can read the Sysmon log.
 
 ---
 

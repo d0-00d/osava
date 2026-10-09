@@ -79,7 +79,7 @@ export async function readSysmon(afterRecordId: number, max = 500, log = SYSMON_
   const text = stdout.trim();
   if (text === "ACCESS_DENIED") {
     throw new LogAccessDenied(
-      "Cannot read the Sysmon log. Install Sysmon from OSAVA (it adds you to Event Log Readers), then sign out and back in."
+      "Cannot read the Sysmon log. Your account must be in the Event Log Readers group and must have signed in since it was added; the Behaviour tab can add you."
     );
   }
   if (text === "LOG_MISSING") {

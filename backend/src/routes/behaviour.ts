@@ -9,7 +9,7 @@ import {
   MODEL_PATH, ModelUnavailable, SERVER_EXE, installModel, installServer, isHealthy, startServer,
 } from "../services/behaviour/runtime";
 import { readState } from "../services/behaviour/store";
-import { ElevationDenied, installSysmon, sysmonStatus } from "../services/behaviour/sysmonInstall";
+import { ElevationDenied, installSysmon, sysmonStatus, type SysmonService } from "../services/behaviour/sysmonInstall";
 import { localOnly } from "./localOnly";
 
 const router = express.Router();
@@ -29,7 +29,7 @@ function fail(res: express.Response, e: unknown) {
 // What Sysmon looks like from here costs two PowerShell launches, and the UI
 // polls this route. Fresh enough to notice an install or a sign-out/in within
 // seconds, cheap enough to leave open.
-type SysmonInfo = { installed: boolean; running: boolean; log: Awaited<ReturnType<typeof probeSysmon>> };
+type SysmonInfo = SysmonService & { log: Awaited<ReturnType<typeof probeSysmon>> };
 let sysmonCache: { at: number; value: SysmonInfo } | null = null;
 async function sysmonInfo(): Promise<SysmonInfo> {
   if (sysmonCache && Date.now() - sysmonCache.at < 10_000) return sysmonCache.value;

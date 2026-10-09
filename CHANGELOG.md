@@ -21,9 +21,14 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
   is judged again, keeping its history.
 - `reviewReason()`: the single definition of "needs review" (no answer, not benign, or a close call), used by
   the classifier and returned by the API.
-- `npm run unit`: 17 tests for the monitor, the scan pipeline, the review rule and the origin guard. They need
-  no Windows and no model (a fake llama-server answers). The ones guarding the bugs below were checked by
-  reintroducing each bug and watching the right test fail.
+- `npm run unit`: 18 tests for the monitor, the scan pipeline, the review rule, the origin guard and module
+  names. They need no Windows and no model (a fake llama-server answers). The ones guarding the bugs below
+  were checked by reintroducing each bug and watching the right test fail.
+- **"Grant log access".** When Sysmon is installed but the account is not in the *Event Log Readers* group
+  (Sysmon put there by hand, say), the Behaviour tab says so and offers to add it: one administrator prompt,
+  the same step the installer already did. `/status` now reports `sysmon.group` (`member`, `not-member`,
+  `unknown`), because the two cures differ: a member only has to sign in again, but signing out never helps
+  someone who was not added.
 - `OSAVA_STATE_FILE` to point the behaviour state somewhere other than `~/.osava/behaviour.json`.
 
 ### Fixed (each found by running the real thing)
@@ -49,6 +54,14 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
   by English message text, so an idle log is not an error on a Windows in another language.
 - **The sidecar built by `npm run compile` on a different Node than pkg's Windows target refused to start**
   ("V8 rejected the bytecode cache"). It is now packaged with `--no-bytecode`.
+- **`npm run dev` crashed on startup** (`Cannot read properties of undefined`). `contract.ts` sat next to
+  `contract.json`, and under ts-node `require("./contract")` resolves the `.json` first, so `CONTRACT` was
+  undefined. tsc, esbuild and pkg all prefer the `.ts`, so the typecheck, the bundle, the packaged sidecar and
+  every test passed; only ts-node-dev broke. The module is now `contractSpec.ts` (the same rename the Windows
+  working copy had already made), and a unit test refuses any `.ts` that shares a name with a `.json`.
+- The Behaviour tab told someone who had never been added to the log-readers group to "sign out and back in",
+  and offered no way forward. See "Grant log access" above.
+- "Already a member" was recognised by its English message; it is now also recognised by exception type.
 
 ### Security
 
@@ -71,8 +84,8 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 - **Medium is the weakest call.** Clear attacks and clearly normal activity are told apart far more reliably
   than the grey area between them. Verdicts are per event, with no memory of earlier ones, and a behaviour is
   decided the first time it is seen.
-- **Reading the live Sysmon log needs a sign-out and back in** after the first install (the new *Event Log
-  Readers* membership takes effect at sign-in).
+- **Reading the live Sysmon log needs a sign-out and back in** after OSAVA adds the account to *Event Log
+  Readers* (Windows applies a new membership at sign-in). Until then, a backend started elevated can read it.
 - The installer (`.msi` / `.exe`) is built with `npm run tauri build` on Windows; it was not rebuilt for this
   entry. The version in `package.json`, `tauri.conf.json` and `Cargo.toml` is 0.3.0.
 

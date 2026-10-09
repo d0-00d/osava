@@ -50,7 +50,12 @@ type Monitor = {
 };
 
 type Status = {
-  sysmon: { installed: boolean; running: boolean; log: "readable" | "denied" | "missing" | "unknown" };
+  sysmon: {
+    installed: boolean; running: boolean;
+    /** in the group that may read the log: a member only has to sign in again, anyone else has to be added */
+    group: "member" | "not-member" | "unknown";
+    log: "readable" | "denied" | "missing" | "unknown";
+  };
   runtime: { serverInstalled: boolean; modelInstalled: boolean; running: boolean };
   model: { name?: string; gguf_sha256?: string; gguf_bytes?: number; quantisation?: string; promptVariant: string; contract: string };
   monitor: Monitor;
@@ -284,6 +289,12 @@ export default function Behaviour() {
 
   // ── derived state ────────────────────────────────────────────────────────
   const sysmonReady = !!status && status.sysmon.installed && status.sysmon.log === "readable";
+  // Installed but unreadable has two cures. Never added to the log-readers group
+  // (Sysmon put there by hand, say): OSAVA has to add the user, and signing out
+  // would never help. Already added: Windows only applies it at the next sign-in.
+  const logDenied = !!status && status.sysmon.installed && status.sysmon.log === "denied";
+  const needsGrant = logDenied && status?.sysmon.group !== "member";
+  const needsSignOut = logDenied && status?.sysmon.group === "member";
   const modelReady = !!status && status.runtime.serverInstalled && status.runtime.modelInstalled;
   const ready = sysmonReady && modelReady;
   const m = status?.monitor;
@@ -340,21 +351,24 @@ export default function Behaviour() {
               <p className="osv-step-desc">
                 {!status.sysmon.installed
                   ? "Records process, network, file and registry activity to the Windows event log. OSAVA installs it with a pinned, checksummed configuration and asks for administrator permission once."
-                  : status.sysmon.log === "denied"
-                    ? "Sysmon is installed. Windows applies the new log-reading permission at your next sign-in: sign out and back in, then return here."
-                    : status.sysmon.log === "missing"
-                      ? "Sysmon is installed, but its log does not exist yet. Check that the Sysmon service is running."
-                      : "Sysmon is installed, but OSAVA could not open its log. Check that the Sysmon service is running."}
+                  : needsGrant
+                    ? "Sysmon is installed, but your account cannot read its log. OSAVA adds you to the Event Log Readers group (one administrator prompt), so it never has to run as admin. Windows applies that at your next sign-in." +
+                      (status.sysmon.group === "unknown" ? " If you were already added, sign out and back in instead." : "")
+                    : needsSignOut
+                      ? "Sysmon is installed and you are in the Event Log Readers group. Windows applies that at your next sign-in: sign out and back in, then return here."
+                      : status.sysmon.log === "missing"
+                        ? "Sysmon is installed, but its log does not exist yet. Check that the Sysmon service is running."
+                        : "Sysmon is installed, but OSAVA could not open its log. Check that the Sysmon service is running."}
               </p>
             </div>
             <div className="osv-step-side">
               <StatusPill tone={sysmonReady ? "ok" : status.sysmon.installed ? "warn" : "neutral"}>
                 {sysmonReady ? "Ready" : !status.sysmon.installed ? "Not installed"
-                  : status.sysmon.log === "denied" ? "Sign-out needed" : "Not readable"}
+                  : needsGrant ? "Access needed" : needsSignOut ? "Sign-out needed" : "Not readable"}
               </StatusPill>
-              {!status.sysmon.installed && (
+              {(!status.sysmon.installed || needsGrant) && (
                 <button className="osv-btn osv-btn--primary" onClick={installSysmon} disabled={busy !== null}>
-                  {busy === "sysmon" ? "Installing…" : "Install Sysmon"}
+                  {busy === "sysmon" ? (needsGrant ? "Granting…" : "Installing…") : needsGrant ? "Grant log access" : "Install Sysmon"}
                 </button>
               )}
             </div>
