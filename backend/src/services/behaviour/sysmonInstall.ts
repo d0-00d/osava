@@ -19,12 +19,21 @@ const CONFIG_URL = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-con
 const CONFIG_SHA256 = "055febc600e6d7448cdf3812307275912927a62b1f94d0d933b64b294bc87162";
 const EVENT_LOG_READERS = "S-1-5-32-573";
 
+/** The user declined the UAC prompt (or policy blocked elevation); nothing ran. */
+export class ElevationDenied extends Error {}
+const ERROR_CANCELLED = 1223;
+
 export async function sysmonStatus(): Promise<{ installed: boolean; running: boolean }> {
+  // The answer is computed in PowerShell and the script ends in `exit 0` on
+  // purpose. The 32- and 64-bit services have different names and only one of
+  // them exists; the silenced "not found" for the other leaves $? false, and
+  // powershell.exe then exits 1 -- after printing a correct answer -- which
+  // makes execFile reject and turned every status request into a 500 on any
+  // machine with the 64-bit Sysmon.
   const { stdout } = await ps(
-    "Get-Service Sysmon64,Sysmon -ErrorAction SilentlyContinue | Select-Object -First 1 Status | ConvertTo-Json");
-  const s = stdout.trim() ? JSON.parse(stdout) : null;
-  // Status serialises as an enum number; 4 is Running.
-  return { installed: !!s, running: !!s && (s.Status === 4 || s.Status === "Running") };
+    "$s = Get-Service -Name 'Sysmon64','Sysmon' -ErrorAction SilentlyContinue | Select-Object -First 1; " +
+    "@{ installed = [bool]$s; running = [bool]($s -and $s.Status -eq 'Running') } | ConvertTo-Json -Compress; exit 0");
+  return JSON.parse(stdout.trim()) as { installed: boolean; running: boolean };
 }
 
 export async function installSysmon(): Promise<{ installedSysmon: boolean }> {
@@ -58,7 +67,23 @@ export async function installSysmon(): Promise<{ installedSysmon: boolean }> {
     `try { Add-LocalGroupMember -SID '${EVENT_LOG_READERS}' -Member '${user.replace(/'/g, "''")}' -ErrorAction Stop } ` +
     `catch { if ($_.Exception.Message -notmatch 'already a member') { throw } }`;
   const encoded = Buffer.from(elevated, "utf16le").toString("base64");
-  await ps(`$p = Start-Process powershell.exe -ArgumentList '-NoProfile','-EncodedCommand','${encoded}' ` +
-    `-Verb RunAs -Wait -PassThru -WindowStyle Hidden; exit $p.ExitCode`);
+  // A declined UAC prompt is a NON-terminating Start-Process error: $p stays
+  // null and a bare `exit $p.ExitCode` exits 0, reporting success for an
+  // install that never ran. -ErrorAction Stop turns it into something we can
+  // catch and give its own exit code.
+  try {
+    await ps(`try { $p = Start-Process powershell.exe -ArgumentList '-NoProfile','-EncodedCommand','${encoded}' ` +
+      `-Verb RunAs -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop } catch { exit ${ERROR_CANCELLED} }; ` +
+      `if ($null -eq $p) { exit ${ERROR_CANCELLED} }; exit $p.ExitCode`);
+  } catch (e) {
+    if ((e as { code?: number }).code === ERROR_CANCELLED) {
+      throw new ElevationDenied("Elevation was denied — the Sysmon install was cancelled.");
+    }
+    throw new Error(`The elevated Sysmon install failed (exit code ${(e as { code?: number }).code ?? "unknown"}).`);
+  }
+  // Do not trust an exit code for a claim the system can check.
+  if (!(await sysmonStatus()).installed) {
+    throw new Error("Sysmon is still not installed after the install step; nothing was changed.");
+  }
   return { installedSysmon: !status.installed };
 }

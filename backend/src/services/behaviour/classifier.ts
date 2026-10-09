@@ -24,6 +24,20 @@ import type { Severity, Verdict } from "./types";
 /** Below this, the model's top two classes are too close to act on alone. */
 export const REVIEW_MARGIN = 0.2;
 
+/** Why a verdict is put in front of a person; null = it is not. */
+export type ReviewReason = "no_answer" | "not_benign" | "close_call" | null;
+
+/**
+ * The one definition of "needs review", in order of how much it should worry
+ * you: the model gave nothing usable (failed open), the verdict is not benign,
+ * or it is benign but the top two classes are within REVIEW_MARGIN.
+ */
+export function reviewReason(v: { failedOpen: boolean; severity: string; margin: number }): ReviewReason {
+  if (v.failedOpen) return "no_answer";
+  if ((CONTRACT.severity.bucket[v.severity] ?? "suspicious") !== "benign") return "not_benign";
+  return v.margin < REVIEW_MARGIN ? "close_call" : null;
+}
+
 export interface ClassifierOptions {
   baseUrl: string;
   apiKey?: string;
@@ -104,7 +118,7 @@ export async function classify(body: string, opt: ClassifierOptions): Promise<Ve
     severity,
     ...explain(parseBody(body), cls),
     severityProbs, classProbs, margin,
-    needsReview: failedOpen || cls !== "benign" || margin < REVIEW_MARGIN,
+    needsReview: reviewReason({ failedOpen, severity, margin }) !== null,
     failedOpen,
     modelSha256: CONTRACT.model.gguf_sha256,
     raw,
