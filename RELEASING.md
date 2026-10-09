@@ -50,7 +50,10 @@ commit**, and a **draft** release that a person reads before publishing. Code si
 5. **Build on Windows**: `npm ci` in the root and in `backend/`, then `npm run tauri build`. Installers are
    written to `src-tauri/target/release/bundle/nsis` and `.../msi`. (`npm run compile` packages the sidecar
    with `--no-bytecode`, so it does not matter which Node version builds it.)
-6. **Test the installed app** with the checklist below, on a machine where port 4000 is free.
+6. **Test the built and installed app.** `scripts/release-test/final-test.ps1` and `installer-test.ps1` (see the
+   README in that folder) run the launch, second-launch, close and kill checks on the real app and the installer
+   end to end. Then the checklist below, for what they do not reach (Sysmon, the model, a clean PC). Port 4000 must
+   be free.
 7. Checksums: `Get-FileHash <file> -Algorithm SHA256` for each installer, into `SHA256SUMS.txt`.
 8. Tag and draft: `git tag -a Alpha.V0.x -m "…" && git push origin Alpha.V0.x`. The release workflow builds and
    attaches the installers to a **draft**; or create the draft by hand with `gh release create --draft`.
@@ -58,7 +61,8 @@ commit**, and a **draft** release that a person reads before publishing. Code si
 
 ## Checklist: the installed app
 
-Do this as a new user would, ideally on a Windows account that has never run OSAVA.
+Do this as a new user would, ideally on a Windows account that has never run OSAVA. The scripts already check the
+items about the launch, a second launch and closing or killing the app.
 
 - [ ] The installer runs per-user with no administrator prompt; Windows says "Unknown publisher" while unsigned.
 - [ ] OSAVA opens, the splash finishes, System Health loads, nothing is stuck on "waiting for the backend".

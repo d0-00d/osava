@@ -45,6 +45,9 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
   support; `--full` also downloads and hashes the model). It fails while the model has no address.
 - `RELEASING.md` (the procedure, a checklist for the installed app, and what is not done), CI for pushes, a
   draft-release workflow for tags (not yet run), and `THIRD_PARTY_NOTICES.md`.
+- **`scripts/release-test/`**: drives the built app through its WebView2 debugging port (launch, second launch,
+  close, kill) and the NSIS setup (silent install, upgrade over a running copy, uninstall). These found the three
+  launch bugs under Fixed; the unit tests could not.
 - **A trail when the backend cannot start.** It writes one line to `%USERPROFILE%\.osava\backend.log` when it starts, and a plain reason when it cannot (port 4000 taken by another program, a crash), then exits. The splash, which used to tell an installed user to run `cd backend && npm run dev`, now says another program may be using port 4000 and where to look.
 - The installer now has an identity: explicit targets, a per-user NSIS install, a publisher, copyright and
   descriptions instead of "A Tauri App".

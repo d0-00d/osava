@@ -58,6 +58,7 @@ osava/
 ├── src/                        # React + TypeScript frontend UI
 ├── backend/                    # Standalone Express API backend (bundled via esbuild + pkg)
 │   └── src/services/behaviour/ # Behaviour triage: Sysmon reader, model runtime, classifier, monitor
+├── scripts/release-test/       # Drives the built app and its installer on Windows (see RELEASING.md)
 ├── src-tauri/                  # Tauri v2 Rust application layer & installer bundle configuration
 │   ├── binaries/               # Compiled sidecar executable (osava-backend.exe)
 │   └── target/release/bundle/  # Generated .msi and .exe installers
