@@ -4,6 +4,7 @@ import SecurityHub from "./SecurityHub";
 import AvConsole from "./AvConsole";
 import ScanHistory from "./ScanHistory";
 import Threats from "./Threats";
+import Behaviour from "./Behaviour";
 import SplashScreen from "./SplashScreen";
 import PixelTransition from "./PixelTransition";
 import LetterGlitch from "./LetterGlitch";
@@ -11,7 +12,7 @@ import LetterGlitch from "./LetterGlitch";
 import "./App.css";
 import "./osava-ui.css";
 
-type Tab = "dashboard" | "hub" | "console" | "threats" | "history";
+type Tab = "dashboard" | "hub" | "console" | "behaviour" | "threats" | "history";
 
 type InstallStatus = {
   installed: boolean;
@@ -24,6 +25,7 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "System Health" },
   { id: "hub", label: "Security Hub" },
   { id: "console", label: "AV Console" },
+  { id: "behaviour", label: "Behaviour" },
   { id: "threats", label: "Threats" },
   { id: "history", label: "Scan History" },
 ];
@@ -99,6 +101,7 @@ function App() {
           />
         )}
         {activeTab === "console" && <AvConsole onScanComplete={checkHistory} />}
+        {activeTab === "behaviour" && <Behaviour />}
         {activeTab === "threats" && <Threats />}
         {activeTab === "history" && <ScanHistory />}
       </main>
