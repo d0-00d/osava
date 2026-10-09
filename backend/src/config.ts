@@ -2,6 +2,9 @@ import path from "node:path";
 import os from "node:os";
 import { ChildProcess } from "node:child_process";
 
+// The API the OSAVA window talks to. Loopback only: see index.ts and routes/localOnly.ts.
+export const API_PORT = 4000;
+
 // The MSI installs the binaries here (needs admin) — read-only for us.
 export const CLAMAV_DIR = "C:\\Program Files\\ClamAV";
 
