@@ -59,8 +59,15 @@ function App() {
     }
   }
 
-  useEffect(() => { fetchInstallStatus(); }, []);
-  useEffect(() => { checkHistory(); }, []);
+  // The packaged app starts its backend with the window, and the page loads first. A request made
+  // as the page mounts is refused and never repeated, which left the AV Console, Threats and Scan
+  // History tabs out of the sidebar for the whole session. The splash is what waits for the
+  // backend, so ask once it has found it.
+  useEffect(() => {
+    if (!transitioning) return;
+    fetchInstallStatus();
+    checkHistory();
+  }, [transitioning]);
 
   const visibleTabs = NAV_ITEMS.filter(item => {
     if (item.id === "console") return installStatus?.installed;
@@ -138,7 +145,7 @@ function App() {
           animationStepDuration={0.5}
           holdDuration={0.12}
           firstContent={<SplashScreen onComplete={() => setTransitioning(true)} />}
-          secondContent={shell}
+          secondContent={transitioning ? shell : null}
         />
       ) : (
         shell
