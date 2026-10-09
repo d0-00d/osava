@@ -27,6 +27,8 @@ import { download, DownloadError } from "../src/services/behaviour/download";
 import { cancelInstall, installDone, installState, startInstall } from "../src/services/behaviour/installer";
 import { LLM_DIR, MODEL_PATH, installModel, missingVcRuntime, modelVerified, vcRuntimeMessage } from "../src/services/behaviour/runtime";
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
+import { pidAlive, watchParent } from "../src/parentWatch";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(cond: () => boolean, ms = 2000): Promise<void> {
@@ -719,4 +721,44 @@ test("missingVcRuntime: names exactly the DLLs a clean Windows would lack, and t
   assert.match(msg, /Visual C\+\+ Redistributable \(x64\)/);
   assert.match(msg, /https:\/\/aka\.ms\/vs\/17\/release\/vc_redist\.x64\.exe/);
   assert.match(msg, /press Install model again/);
+});
+
+
+// ── leaving when the window is gone ────────────────────────────────────────
+
+test("parent watch: a running process is alive, a finished one is not (a real child, not a stub)", async () => {
+  assert.equal(pidAlive(process.pid), true);
+  const child = spawn(process.execPath, ["-e", "0"], { stdio: "ignore" });
+  const pid = child.pid!;
+  await new Promise((r) => child.once("exit", r));
+  assert.equal(pidAlive(pid), false);
+});
+
+test("parent watch: calls back once when the process goes, and not before", async () => {
+  let up = true, gone = 0;
+  watchParent(1234, () => gone++, { intervalMs: 5, alive: () => up });
+  await sleep(40);
+  assert.equal(gone, 0, "left while its parent was still there");
+  up = false;
+  await until(() => gone > 0);
+  await sleep(40);
+  assert.equal(gone, 1, "must fire exactly once");
+});
+
+test("parent watch: stopping it means it never calls back", async () => {
+  let gone = 0;
+  const stop = watchParent(1234, () => gone++, { intervalMs: 5, alive: () => false });
+  stop();
+  await sleep(40);
+  assert.equal(gone, 0);
+});
+
+test("parent watch: a process we may not signal still counts as alive (EPERM is not ESRCH)", () => {
+  const real = process.kill;
+  try {
+    process.kill = (() => { throw Object.assign(new Error("denied"), { code: "EPERM" }); }) as typeof process.kill;
+    assert.equal(pidAlive(4242), true);
+    process.kill = (() => { throw Object.assign(new Error("gone"), { code: "ESRCH" }); }) as typeof process.kill;
+    assert.equal(pidAlive(4242), false);
+  } finally { process.kill = real; }
 });

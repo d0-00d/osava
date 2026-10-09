@@ -23,7 +23,22 @@ fn log_sidecar(msg: &str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // One copy at a time. A second would find port 4000 taken, run without a backend of its own,
+    // and lose the first copy's when that one is closed. It has to be the first plugin. Release
+    // builds only, so `tauri dev` is not turned away because an installed copy is open.
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        use tauri::Manager;
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }));
+
+    builder
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -36,7 +51,8 @@ pub fn run() {
                 use tauri::Manager;
                 use tauri_plugin_shell::ShellExt;
                 match _app.shell().sidecar("osava-backend") {
-                    Ok(cmd) => match cmd.spawn() {
+                    // Our pid, so the backend can leave when this process is killed instead of closed.
+                    Ok(cmd) => match cmd.env("OSAVA_PARENT_PID", std::process::id().to_string()).spawn() {
                         Ok((_rx, child)) => {
                             log_sidecar("backend sidecar spawned");
                             _app.manage(BackendProcess(std::sync::Mutex::new(Some(child))));

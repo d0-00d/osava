@@ -13,6 +13,7 @@ import bootRoutes from "./routes/boot";
 import behaviourRoutes from "./routes/behaviour";
 import { API_PORT } from "./config";
 import { monitor } from "./services/behaviour/instance";
+import { watchParent } from "./parentWatch";
 
 dotenv.config();
 
@@ -39,6 +40,13 @@ app.use(behaviourRoutes);
 
 // never leave llama-server running after the backend exits (stop() releases it)
 for (const sig of ["SIGINT", "SIGTERM", "exit"] as const) process.on(sig, () => { monitor.stop(); if (sig !== "exit") process.exit(0); });
+
+// Started by the window, which tells us who it is. If it is killed instead of closed, nothing else
+// will ever stop us (exit runs monitor.stop(), which releases llama-server).
+const parent = Number(process.env["OSAVA_PARENT_PID"]);
+if (Number.isInteger(parent) && parent > 0) {
+  watchParent(parent, () => { note(`the window (pid ${parent}) is gone: stopping`); process.exit(0); });
+}
 
 // Loopback only: nothing on the network has a reason to reach this API, and a
 // wildcard bind is also what makes Windows ask the user to allow the app
