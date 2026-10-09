@@ -48,9 +48,26 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 - **A trail when the backend cannot start.** It writes one line to `%USERPROFILE%\.osava\backend.log` when it starts, and a plain reason when it cannot (port 4000 taken by another program, a crash), then exits. The splash, which used to tell an installed user to run `cd backend && npm run dev`, now says another program may be using port 4000 and where to look.
 - The installer now has an identity: explicit targets, a per-user NSIS install, a publisher, copyright and
   descriptions instead of "A Tauri App".
+- **One window at a time.** Opening OSAVA again brings the first window forward.
+- **The model runtime's one outside requirement is checked first.** llama.cpp needs the Visual C++ Redistributable
+  (x64), which a clean Windows may lack. Before downloading 2 GB, the Behaviour tab checks for it, names it and
+  links Microsoft's installer; and a server that dies because a DLL is missing is reported as that, in about a
+  second, instead of as an unexplained exit after trying the CPU too.
 
 ### Fixed (each found by running the real thing)
 
+- **The installed app hid the AV Console, Threats and Scan History tabs, and System Health first said "No
+  antivirus product detected" and "No firewall product detected".** The window and its backend start together
+  and the page loads first; within 100 ms it asked for the install status, the scan history and the system status,
+  and all three were refused because the backend listens about half a second later. Only the splash retried. The
+  tabs depend on two answers asked for once, so they stayed missing for the whole session on a PC with ClamAV and
+  scan history. `npm run dev` hid it, because the backend is started by hand before the window. The page now asks
+  once the splash has found the backend.
+- **Killing OSAVA (Task Manager, a crash, an installer replacing it) left its backend running**, holding port 4000
+  and the model in memory, and the next launch talked to the old copy. The window now gives the backend its pid
+  and the backend exits within two seconds of that process going.
+- **Starting OSAVA twice** opened a second window with no backend of its own, and closing the first window killed
+  the one they shared. See "One window at a time".
 - **Events were silently skipped when more than 500 piled up.** `Get-WinEvent` walks a log newest-first and
   applies `-MaxEvents` to that order, so the reader took the newest 500 and the bookmark jumped past every
   older pending record. It now reads `-Oldest`, and a backlog drains in order.
@@ -116,8 +133,10 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
   decided the first time it is seen.
 - **Reading the live Sysmon log needs a sign-out and back in** after OSAVA adds the account to *Event Log
   Readers* (Windows applies a new membership at sign-in). Until then, a backend started elevated can read it.
-- The installer (`.msi` / `.exe`) is built with `npm run tauri build` on Windows; it was not rebuilt for this
-  entry. The version in `package.json`, `tauri.conf.json` and `Cargo.toml` is 0.3.0.
+- **Not tested on a clean PC.** The installers (`.msi` / `.exe`, built with `npm run tauri build` on Windows) were
+  built and exercised on the development machine, not on a Windows that has never seen OSAVA. They are unsigned.
+  The Visual C++ runtime is checked for and explained, not installed for you. The version in `package.json`,
+  `tauri.conf.json` and `Cargo.toml` is 0.3.0.
 
 ### Verification
 
@@ -137,5 +156,19 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 - The model also runs on the CPU alone (`OSAVA_LLM_DEVICE=none`): canaries pass, and on 40 held-out events
   every severity matches the iGPU run (margins differ by up to 0.12, as numerics do across backends). About
   1.3 s per new behaviour on an 8-core Ryzen 7 8845HS, against about 0.25 s on its Radeon 780M.
+- **The built app, driven through its WebView2 debugging port by a script, nothing mocked.** A plain launch
+  shows every tab the PC has data for (six here), makes no request that fails, logs no console error, and talks
+  only to its own origin and `localhost:4000`. A second launch exits and leaves one window and one backend.
+  Closing the window leaves no process. Killing it takes the backend with it in 1.6 s, and with the model loaded
+  the model server too (2.6 s). Before the fixes the same launch showed three tabs, three console errors and four
+  refused requests, and a kill left the backend running.
+- **The installer.** The NSIS setup asks for no administrator rights (its manifest says `asInvoker`), installs for
+  the current user in under three seconds, registers under the current user only, makes its shortcuts, and the
+  installed copy passes the checks above. Installing over a running copy works, and uninstalling removes what
+  the setup put there and leaves only `%USERPROFILE%\.osava`. It was run as a renamed copy of the same build
+  (another product name and identifier), so it could not touch a v0.1 install that was already on the machine.
+  The `.msi` was not run: it installs for all users and needs administrator rights.
 - *Not exercised:* a live Sysmon feed. The account used for development is not yet in *Event Log Readers*, so
-  the live log could only be tested for its failure path (`LOG_ACCESS_DENIED`) and through exported logs.
+  the live log could only be tested for its failure path (`LOG_ACCESS_DENIED`) and through exported logs. Nor a
+  Windows that has never seen OSAVA, or one without the Visual C++ runtime (that failure was run for real by
+  removing a DLL from the server's folder: refused in 1.1 s with the right message).

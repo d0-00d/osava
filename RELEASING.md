@@ -62,6 +62,10 @@ Do this as a new user would, ideally on a Windows account that has never run OSA
 
 - [ ] The installer runs per-user with no administrator prompt; Windows says "Unknown publisher" while unsigned.
 - [ ] OSAVA opens, the splash finishes, System Health loads, nothing is stuck on "waiting for the backend".
+- [ ] Straight after Launch, with nothing clicked, the sidebar has every tab this PC has data for: AV Console if
+      ClamAV is installed, Threats and Scan History if there is scan history. (They were missing for a whole
+      session when the page asked for them before the backend was listening.)
+- [ ] Opening OSAVA a second time brings the first window forward; there is still one `osava.exe`.
 - [ ] `osava-backend.exe` is running (Task Manager) and listens on `127.0.0.1:4000` only.
 - [ ] **Behaviour tab → Install Sysmon**: one UAC prompt; declining it leaves a calm message, not "installed".
 - [ ] If the account is not in *Event Log Readers*: "Grant log access", then sign out and back in.
@@ -69,12 +73,19 @@ Do this as a new user would, ideally on a Windows account that has never run OSA
       (watch the byte count continue, not restart); pulling the network cable mid-way recovers.
 - [ ] **Start monitoring**: "Loading the model" (up to a minute or two the first time), then "Monitoring"; new
       behaviours appear as events happen.
-- [ ] Closing OSAVA leaves no `osava-backend.exe` or `llama-server.exe` running.
+- [ ] Closing OSAVA leaves no `osava-backend.exe` or `llama-server.exe` running. So does ending `osava.exe` in
+      Task Manager, within a few seconds, and port 4000 is free again.
+- [ ] On a PC without the Visual C++ runtime, **Install model** says so before downloading anything.
 - [ ] Uninstalling OSAVA works; `%USERPROFILE%\.osava` and Sysmon are left alone (and documented as such).
 - [ ] On a machine with no usable GPU, the CPU note appears and verdicts still come.
 
 ## Not done yet
 
+- **A clean Windows.** Everything in the checklist above has been run on the development PC (CHANGELOG,
+  Verification), the installer as a renamed copy so as not to disturb an older install. Not yet run: a Windows
+  that has never seen OSAVA, one without the Visual C++ runtime, and the `.msi` (it installs per machine and needs
+  administrator rights).
+- **The product name is `osava`, the same as v0.1's**, so installing v0.3 upgrades a v0.1 install in place.
 - **Code signing.** Installers are unsigned, so SmartScreen warns on first run. The README tells users how to
   check the SHA-256 and proceed.
 - **The model has no hosted address**, and the weights' licence is undecided. `verify-release` fails until both

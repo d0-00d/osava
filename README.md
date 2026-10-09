@@ -72,8 +72,9 @@ osava/
 ## Installing OSAVA
 
 Windows 10 or 11, 64-bit. Download `osava_<version>_x64-setup.exe` (installs for your user, no administrator
-needed) or the `.msi` from the [Releases](https://github.com/d0-00d/osava/releases) page, with `SHA256SUMS.txt`,
-and check what you downloaded:
+needed) from the [Releases](https://github.com/d0-00d/osava/releases) page, with `SHA256SUMS.txt`, and check
+what you downloaded. The `.msi` installs for every user of the PC into Program Files and asks for administrator
+permission; it is there for managed deployment.
 
 ```powershell
 Get-FileHash .\osava_0.3.0_x64-setup.exe -Algorithm SHA256
@@ -81,6 +82,15 @@ Get-FileHash .\osava_0.3.0_x64-setup.exe -Algorithm SHA256
 
 Alpha releases are **not code-signed yet**, so Windows SmartScreen shows "Windows protected your PC" and
 "Unknown publisher". After comparing the hash with `SHA256SUMS.txt`, choose *More info*, then *Run anyway*.
+
+OSAVA needs two things Microsoft ships with current Windows, and a clean or old PC may lack: **WebView2** (the
+setup downloads it from Microsoft if it is missing, which needs a connection that once) and the **Visual C++
+Redistributable (x64)**, which the model runtime needs. If the second is missing the Behaviour tab says so, before
+it downloads anything, and links Microsoft's installer
+([aka.ms/vs/17/release/vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe)).
+
+Only one copy runs at a time: opening OSAVA again brings the first window forward. If OSAVA stays on its start
+screen, another program may be using port 4000; `%USERPROFILE%\.osava\backend.log` says what the backend reported.
 
 The first time you open the **Behaviour** tab, OSAVA sets itself up (details under
 [Behaviour triage](#behaviour-triage)): Sysmon (one administrator prompt), then the model runtime. That is a
