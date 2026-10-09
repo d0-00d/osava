@@ -108,7 +108,11 @@ finally {
   # a test build's is the test's to remove.
   $left = @(Get-ChildItem "HKCU:\Software" -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem $_.PSPath -ErrorAction SilentlyContinue } | Where-Object { $_.PSChildName -like "*$Match*" })
   "    the uninstaller left $($left.Count) registry key(s) behind" + $(if ($left.Count) { ": " + (($left | ForEach-Object Name) -join ", ") })
-  if ($Identifier -like "*installtest*") { $left | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
+  if ($Identifier -like "*installtest*") {
+    $parents = @($left | ForEach-Object { $_.PSParentPath } | Select-Object -Unique)
+    $left | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($pp in $parents) { if ((Test-Path $pp) -and -not @(Get-ChildItem $pp -ErrorAction SilentlyContinue).Count -and -not (Get-Item $pp).ValueCount) { Remove-Item -LiteralPath $pp -Force -ErrorAction SilentlyContinue } }
+  }
   Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
   Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -like "*$Work*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   # The WebView2 data of a test build is the test's own to delete. A real identifier's is not.
