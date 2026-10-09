@@ -104,6 +104,11 @@ finally {
   Check "the shortcut is gone" (@(Shortcuts).Count -eq 0) ((Shortcuts | ForEach-Object FullName) -join ", ")
   Check "the user's own data (%USERPROFILE%\.osava) was left alone" (Test-Path "$env:USERPROFILE\.osava")
   Check "the OSAVA that was already on this PC is exactly as it was" ((Mine) -eq $mineBefore) $(if ((Mine) -ne $mineBefore) { "before:`n$mineBefore`nafter:`n$(Mine)" })
+  # Tauri's uninstaller leaves an empty Software\<publisher>\<product> key behind. Harmless, but say so;
+  # a test build's is the test's to remove.
+  $left = @(Get-ChildItem "HKCU:\Software" -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem $_.PSPath -ErrorAction SilentlyContinue } | Where-Object { $_.PSChildName -like "*$Match*" })
+  "    the uninstaller left $($left.Count) registry key(s) behind" + $(if ($left.Count) { ": " + (($left | ForEach-Object Name) -join ", ") })
+  if ($Identifier -like "*installtest*") { $left | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
   Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
   Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -like "*$Work*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   # The WebView2 data of a test build is the test's own to delete. A real identifier's is not.

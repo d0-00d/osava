@@ -67,7 +67,11 @@ const shown = await content();
 const missing = sys.antivirus.map((a) => a.displayName).filter((n) => !shown.includes(n));
 check("System Health shows the antivirus products Security Center reports", missing.length === 0, missing.length ? `missing: ${missing.join(", ")}` : sys.antivirus.map((a) => a.displayName).join(", ") || "none registered");
 
-check("no request failed", failed.length === 0, failed.join("; "));
+// The splash closes its own boot-log stream (an EventSource) when the stream says it is done, and the server ends
+// the response at the same moment. Whenever the close wins that race the browser reports the stream as aborted.
+// That is by design (without the close, EventSource would reconnect); anything else failing is a real failure.
+const realFailures = failed.filter((f) => !/\/api\/boot net::ERR_ABORTED$/.test(f));
+check("no request failed", realFailures.length === 0, realFailures.join("; "));
 check("no console errors", page.console.length === 0, page.console.join(" || "));
 check("the window talks to nothing but itself and the backend", [...hosts.keys()].every((h) => h === "tauri.localhost" || h === "localhost:4000"), JSON.stringify([...hosts]));
 if (process.argv[2]) await page.shot(process.argv[2], "launch");
