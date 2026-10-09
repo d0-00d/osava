@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { sha256File } from "./runtime";
+import { psq, sha256File } from "./runtime";
 
 const execFileAsync = promisify(execFile);
 const ps = (script: string) => execFileAsync("powershell.exe",
@@ -72,18 +72,18 @@ export async function installSysmon(): Promise<{ installedSysmon: boolean }> {
     if (!c.ok) throw new Error(`Sysmon config download failed: ${c.status}`);
     await fs.writeFile(cfg, Buffer.from(await c.arrayBuffer()));
     if ((await sha256File(cfg)) !== CONFIG_SHA256) throw new Error("Sysmon config checksum mismatch");
-    await ps(`Expand-Archive -LiteralPath '${zip}' -DestinationPath '${dir}' -Force`);
+    await ps(`Expand-Archive -LiteralPath '${psq(zip)}' -DestinationPath '${psq(dir)}' -Force`);
     // Sysinternals publishes no checksum; verify the Authenticode signature instead.
-    const { stdout } = await ps(`$s = Get-AuthenticodeSignature '${path.join(dir, "Sysmon64.exe")}';` +
+    const { stdout } = await ps(`$s = Get-AuthenticodeSignature '${psq(path.join(dir, "Sysmon64.exe"))}';` +
       `"$($s.Status)|$($s.SignerCertificate.Subject)"`);
     if (!/^Valid\|.*Microsoft/.test(stdout.trim())) throw new Error(`Sysmon64.exe signature invalid: ${stdout.trim()}`);
-    installCmd = `& '${path.join(dir, "Sysmon64.exe")}' -accepteula -i '${cfg}' | Out-Null; `;
+    installCmd = `& '${psq(path.join(dir, "Sysmon64.exe"))}' -accepteula -i '${psq(cfg)}' | Out-Null; `;
   }
 
   // One elevation for both steps. The user is passed in explicitly: under an
   // over-the-shoulder UAC prompt the elevated context is a different account.
   const elevated = `${installCmd}` +
-    `try { Add-LocalGroupMember -SID '${EVENT_LOG_READERS}' -Member '${user.replace(/'/g, "''")}' -ErrorAction Stop } ` +
+    `try { Add-LocalGroupMember -SID '${EVENT_LOG_READERS}' -Member '${psq(user)}' -ErrorAction Stop } ` +
     // MemberExistsException is what "already a member" is; the message text is only English.
     `catch { if ($_.Exception.GetType().Name -ne 'MemberExistsException' -and $_.Exception.Message -notmatch 'already a member') { throw } }`;
   const encoded = Buffer.from(elevated, "utf16le").toString("base64");
