@@ -25,8 +25,8 @@ Open the **Behaviour** tab. A small language model reads Sysmon events on this P
 
 **Setup (once)**
 
-1. **Sysmon**: press *Install Sysmon*. OSAVA installs it with a pinned, checksummed configuration and asks for administrator permission once. It also adds you to *Event Log Readers*, so OSAVA itself never has to run as admin. Windows applies that at your **next sign-in**: sign out and back in once. If Sysmon is already installed (put there by hand, say) but you are not in that group, the button reads *Grant log access* and does only that step; signing out alone would never help.
-2. **Local model**: press *Install model*. OSAVA downloads a pinned llama.cpp build and checks both it and the model file against fixed checksums. The model (`osava-smollm-q4.gguf`, 1.9 GB, SHA-256 `9ab1eba2…3d51`) is not bundled: put it in `%USERPROFILE%\.osava\llm\` (an Ollama store is also checked), or set `OSAVA_MODEL_URL` to a download for it.
+1. **Sysmon**: press *Install Sysmon*. OSAVA installs it with a pinned, checksummed configuration and asks for administrator permission once. Installing it accepts Microsoft's Sysinternals Software License Terms for Sysmon on your behalf. It also adds you to *Event Log Readers*, so OSAVA itself never has to run as admin. Windows applies that at your **next sign-in**: sign out and back in once. If Sysmon is already installed (put there by hand, say) but you are not in that group, the button reads *Grant log access* and does only that step; signing out alone would never help.
+2. **Local model**: press *Install model*. OSAVA downloads a pinned llama.cpp build and the model, checking both against fixed checksums. It shows progress, **Stop** keeps what has arrived, and an interrupted download resumes where it left off. The model (`osava-smollm-q4.gguf`, 1.9 GB, SHA-256 `9ab1eba2…3d51`) is fetched from the address recorded in the build's `contract.json` (or `OSAVA_MODEL_URL`); a build without one cannot fetch it, so put the file in `%USERPROFILE%\.osava\llm\` (an Ollama store is also checked) and press the button to have it verified. The first start of the model can take a minute or two, while Windows checks the freshly downloaded programs; if the graphics path does not work on your PC, OSAVA starts it on the CPU instead.
 3. **Start monitoring** (or *Scan once*). Everything runs on this PC; events and verdicts are kept in `%USERPROFILE%\.osava\` and are never sent anywhere.
 
 **How to read it**
@@ -69,18 +69,43 @@ osava/
 
 ---
 
-## Installation & Pre-Built Installers
+## Installing OSAVA
 
-Once compiled, Osava produces standalone Windows installer packages located in `src-tauri/target/release/bundle/`:
+Windows 10 or 11, 64-bit. Download `osava_<version>_x64-setup.exe` (installs for your user, no administrator
+needed) or the `.msi` from the [Releases](https://github.com/d0-00d/osava/releases) page, with `SHA256SUMS.txt`,
+and check what you downloaded:
+
+```powershell
+Get-FileHash .\osava_0.3.0_x64-setup.exe -Algorithm SHA256
+```
+
+Alpha releases are **not code-signed yet**, so Windows SmartScreen shows "Windows protected your PC" and
+"Unknown publisher". After comparing the hash with `SHA256SUMS.txt`, choose *More info*, then *Run anyway*.
+
+The first time you open the **Behaviour** tab, OSAVA sets itself up (details under
+[Behaviour triage](#behaviour-triage)): Sysmon (one administrator prompt), then the model runtime. That is a
+download of about 2 GB, shown with a progress bar; **Stop** keeps what has arrived and pressing Install again
+continues from there. It needs an internet connection once and about 2.5 GB of free disk space. After that,
+everything runs offline. (A build whose contract names no download address cannot fetch the model: copy
+`osava-smollm-q4.gguf` into `%USERPROFILE%\.osava\llm\` instead and press *Install model* to check it.)
+
+**Removing it.** Uninstall OSAVA from *Settings → Apps*. It leaves what it set up, because other tools may use
+it: the model and state in `%USERPROFILE%\.osava` (about 2 GB; delete the folder), and Sysmon (`Sysmon64.exe -u`
+from an administrator prompt removes it).
+
+### Building the installers yourself
+
+Once compiled, Osava produces standalone Windows installer packages in `src-tauri/target/release/bundle/`:
 
 | Installer Format | File Name | Location | Description |
 | :--- | :--- | :--- | :--- |
 | **MSI Package** | `osava_0.3.0_x64_en-US.msi` | `src-tauri/target/release/bundle/msi/` | Windows Installer package suitable for standard or enterprise deployment. |
 | **Executable Setup** | `osava_0.3.0_x64-setup.exe` | `src-tauri/target/release/bundle/nsis/` | NSIS interactive setup installer. |
 
----
+How a release is made, and what is not done yet, is in [RELEASING.md](RELEASING.md). Third-party licences are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-**Prefer not to build it yourself? Check the Releases page for pre-built installers.*
+---
 
 ## Requirements & Development Setup
 

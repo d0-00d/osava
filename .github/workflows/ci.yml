@@ -1,0 +1,33 @@
+# Every push and pull request: the checks that need no Windows, no model and no network beyond npm.
+name: CI
+
+on:
+  push:
+    branches: [master, "feat/**"]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: backend
+      - name: Typecheck the app window
+        run: npx tsc --noEmit
+      - name: Typecheck the backend
+        run: npx tsc --noEmit -p .
+        working-directory: backend
+      - name: Unit tests (monitor, scan pipeline, downloads, install job, origin guard)
+        run: npm run unit
+        working-directory: backend
+      - name: Build the app window
+        run: npm run build

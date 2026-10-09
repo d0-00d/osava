@@ -1,0 +1,59 @@
+# Pushing a tag such as Alpha.V0.3 builds the Windows installers and attaches them, with their SHA-256
+# sums, to a DRAFT release. Nothing is published until a person reads the draft and presses the button.
+#
+# NOT YET RUN: this was written alongside the manual procedure in RELEASING.md and has not seen a tag.
+# The first tag will tell; expect to adjust it.
+name: Release
+
+on:
+  push:
+    tags: ["Alpha.V*", "v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  installers:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm ci
+        working-directory: backend
+      - name: Unit tests
+        run: npm run unit
+        working-directory: backend
+      # Everything a clean machine will fetch must still be what the code pins, and the model must be
+      # downloadable at the address the contract names. This fails until the model is hosted.
+      - name: Release gate
+        run: npm run verify-release
+        working-directory: backend
+      - name: Build the installers
+        run: npm run tauri build
+      - name: Checksums
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem src-tauri/target/release/bundle -Recurse -Include *.exe,*.msi
+          $files | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } | Set-Content SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+      - name: Draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: ${{ github.ref_name }}
+          body: See CHANGELOG.md. These installers are not code-signed; compare their SHA-256 with SHA256SUMS.txt.
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+            SHA256SUMS.txt

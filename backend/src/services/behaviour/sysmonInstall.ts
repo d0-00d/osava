@@ -12,11 +12,11 @@ const execFileAsync = promisify(execFile);
 const ps = (script: string) => execFileAsync("powershell.exe",
   ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true });
 
-const SYSMON_URL = "https://download.sysinternals.com/files/Sysmon.zip";
+export const SYSMON_URL = "https://download.sysinternals.com/files/Sysmon.zip";
 // SwiftOnSecurity/sysmon-config, pinned to a commit and checksummed.
-const CONFIG_URL = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/" +
+export const CONFIG_URL = "https://raw.githubusercontent.com/SwiftOnSecurity/sysmon-config/" +
   "1836897f12fbd6a0a473665ef6abc34a6b497e31/sysmonconfig-export.xml";
-const CONFIG_SHA256 = "055febc600e6d7448cdf3812307275912927a62b1f94d0d933b64b294bc87162";
+export const CONFIG_SHA256 = "055febc600e6d7448cdf3812307275912927a62b1f94d0d933b64b294bc87162";
 const EVENT_LOG_READERS = "S-1-5-32-573";
 
 /** The user declined the UAC prompt (or policy blocked elevation); nothing ran. */
