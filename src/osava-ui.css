@@ -5,8 +5,6 @@
    verbatim, so it stays responsive and maintainable.
    ───────────────────────────────────────────────────────────── */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
-
 :root {
   --osv-teal: rgb(133, 213, 198);
   --osv-teal-strong: rgb(170, 235, 220);
