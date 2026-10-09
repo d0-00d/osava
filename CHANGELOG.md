@@ -30,6 +30,24 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
   `unknown`), because the two cures differ: a member only has to sign in again, but signing out never helps
   someone who was not added.
 - `OSAVA_STATE_FILE` to point the behaviour state somewhere other than `~/.osava/behaviour.json`.
+- **A model install that survives a bad connection.** The 1.9 GB download resumes from where it stopped (a
+  `Range` request on a `.part` file), shows how far along it is, can be stopped (keeping what arrived), checks
+  free disk space first, and gives up on a stalled connection instead of hanging. It runs as a background job
+  whose progress is part of `/status`, so closing the window or changing tab loses nothing. A model file
+  copied in by hand is recognised and checked by pressing Install.
+- **CPU fallback.** If the graphics path will not start, hangs, or fails the canaries, the server is started
+  again on the CPU, and the Behaviour tab says so. Measured: a clean install's first start took 59 s (Windows
+  scanning the new unsigned programs; 8 s afterwards), so the startup allowance is now 120 s.
+- The model's download address can be recorded in `contract.json` beside its checksum
+  (`export_contract.py --model-url`), or set with `OSAVA_MODEL_URL`.
+- **`npm run verify-release`**: checks everything a clean machine will fetch against what the code pins (llama.cpp
+  and the Sysmon config by SHA-256, Sysmon by its Microsoft signature, the model's address, size and `Range`
+  support; `--full` also downloads and hashes the model). It fails while the model has no address.
+- `RELEASING.md` (the procedure, a checklist for the installed app, and what is not done), CI for pushes, a
+  draft-release workflow for tags (not yet run), and `THIRD_PARTY_NOTICES.md`.
+- **A trail when the backend cannot start.** It writes one line to `%USERPROFILE%\.osava\backend.log` when it starts, and a plain reason when it cannot (port 4000 taken by another program, a crash), then exits. The splash, which used to tell an installed user to run `cd backend && npm run dev`, now says another program may be using port 4000 and where to look.
+- The installer now has an identity: explicit targets, a per-user NSIS install, a publisher, copyright and
+  descriptions instead of "A Tauri App".
 
 ### Fixed (each found by running the real thing)
 
@@ -62,6 +80,18 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 - The Behaviour tab told someone who had never been added to the log-readers group to "sign out and back in",
   and offered no way forward. See "Grant log access" above.
 - "Already a member" was recognised by its English message; it is now also recognised by exception type.
+- **The UI fetched its fonts from Google on every launch**, sending the user's IP address to a third party from
+  a product that promises nothing leaves the machine, and falling back to a system font offline. The fonts
+  (OFL) now ship inside the app.
+- **A Windows username with an apostrophe** (O'Brien) broke the llama.cpp unpack and the Sysmon install, because
+  paths went into PowerShell single-quoted strings unescaped. The clean-install test runs from `José O'Brien`.
+- **An interrupted unpack of llama.cpp** could leave an `llama-server.exe` without its DLLs that then counted as
+  "installed" forever. The unpack is now atomic.
+- **A model file counted as "installed" the moment it existed.** It now has to be verified against the checksum.
+- Installing Sysmon accepts Microsoft's licence terms on the user's behalf (`-accepteula`) without saying so;
+  the Behaviour tab now does.
+- The backend typechecks cleanly for the first time: an unfinished KicomAV scaffold returned nothing from a
+  function that promised a string. It now throws "not implemented".
 
 ### Security
 
@@ -72,13 +102,13 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 - The backend listens on loopback only, on both `127.0.0.1` and `::1`. It used to listen on every interface,
   which is also what makes Windows ask the user to allow the app through the firewall. Both families are
   bound because `localhost` resolves to `::1` first and a refused connection there costs two seconds.
+- The window makes no request to any host but its own (checked in the built UI): the Google Fonts calls are gone.
 - *Not changed:* the older ClamAV routes still use an open CORS policy. The loopback bind closes the network
   exposure; a web page in the user's own browser could still reach them.
 
 ### Known limits
 
-- **The model is not bundled or hosted.** Put `osava-smollm-q4.gguf` (SHA-256 `9ab1eba2…3d51`) in
-  `%USERPROFILE%\.osava\llm\`, or set `OSAVA_MODEL_URL`. OSAVA verifies whatever it gets.
+- **The model has no hosted address yet.** The contract can carry one, and `verify-release` fails until it does. Until then put `osava-smollm-q4.gguf` (SHA-256 `9ab1eba2…3d51`) in `%USERPROFILE%\.osava\llm\`, or set `OSAVA_MODEL_URL`, and press Install to have it verified. The weights' licence is undecided, and neither repository has a LICENSE file.
 - **Logon events (4624/4625) are not read.** They are in the model's training, but the reader opens only the
   Sysmon channel.
 - **Medium is the weakest call.** Clear attacks and clearly normal activity are told apart far more reliably
