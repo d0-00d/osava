@@ -1,8 +1,8 @@
 [package]
 name = "osava"
 version = "0.3.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "OSAVA: Windows security dashboard with local behaviour triage"
+authors = ["d0-00d"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

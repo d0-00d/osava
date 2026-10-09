@@ -373,7 +373,7 @@ export default function Behaviour() {
               <span className="osv-step-name">Sysmon</span>
               <p className="osv-step-desc">
                 {!status.sysmon.installed
-                  ? "Records process, network, file and registry activity to the Windows event log. OSAVA installs it with a pinned, checksummed configuration and asks for administrator permission once."
+                  ? "Records process, network, file and registry activity to the Windows event log. OSAVA installs it with a pinned, checksummed configuration and asks for administrator permission once. Installing it accepts Microsoft's Sysinternals Software License Terms for Sysmon on your behalf."
                   : needsGrant
                     ? "Sysmon is installed, but your account cannot read its log. OSAVA adds you to the Event Log Readers group (one administrator prompt), so it never has to run as admin. Windows applies that at your next sign-in." +
                       (status.sysmon.group === "unknown" ? " If you were already added, sign out and back in instead." : "")
