@@ -25,7 +25,7 @@ import { readState } from "../src/services/behaviour/store";
 import { ALLOWED_ORIGINS, localOnly } from "../src/routes/localOnly";
 import { download, DownloadError } from "../src/services/behaviour/download";
 import { cancelInstall, installDone, installState, startInstall } from "../src/services/behaviour/installer";
-import { LLM_DIR, MODEL_PATH, installModel, modelVerified } from "../src/services/behaviour/runtime";
+import { LLM_DIR, MODEL_PATH, installModel, missingVcRuntime, modelVerified, vcRuntimeMessage } from "../src/services/behaviour/runtime";
 import { createHash } from "node:crypto";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -702,4 +702,21 @@ test("install job: stopping it is not a failure, and says what happens next", as
   startInstall({ server: async () => {}, model: async () => {} });
   await installDone();
   assert.equal(installState().phase, "done");
+});
+
+
+// ── the Visual C++ runtime that llama.cpp needs ────────────────────────────
+
+test("missingVcRuntime: names exactly the DLLs a clean Windows would lack, and the message says what to do", () => {
+  const dir = tmpdir();
+  assert.deepEqual(missingVcRuntime(dir).sort(), ["msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll"]);
+  fs.writeFileSync(path.join(dir, "vcruntime140.dll"), "");
+  fs.writeFileSync(path.join(dir, "msvcp140.dll"), "");
+  assert.deepEqual(missingVcRuntime(dir), ["vcruntime140_1.dll"]);
+  fs.writeFileSync(path.join(dir, "vcruntime140_1.dll"), "");
+  assert.deepEqual(missingVcRuntime(dir), []);
+  const msg = vcRuntimeMessage(["vcruntime140.dll"]);
+  assert.match(msg, /Visual C\+\+ Redistributable \(x64\)/);
+  assert.match(msg, /https:\/\/aka\.ms\/vs\/17\/release\/vc_redist\.x64\.exe/);
+  assert.match(msg, /press Install model again/);
 });

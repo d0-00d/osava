@@ -66,6 +66,23 @@ const PORT = Number(process.env["OSAVA_LLM_PORT"] ?? 8089);
  */
 const HEALTH_WAIT_S = 120;
 
+const VC_DLLS = ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"];
+const VC_REDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
+
+/**
+ * llama.cpp's Windows builds import the Visual C++ 2015-2022 runtime, and a clean
+ * Windows may not have it (the app itself and its sidecar do not need it, which is
+ * how this is easy to miss: it works on every developer's PC). Which of its DLLs
+ * are not in `dir`?
+ */
+export function missingVcRuntime(dir = path.join(process.env["SystemRoot"] ?? "C:\\Windows", "System32")): string[] {
+  return VC_DLLS.filter((d) => !existsSync(path.join(dir, d)));
+}
+
+export const vcRuntimeMessage = (missing: string[]) =>
+  `OSAVA's model runtime needs the Microsoft Visual C++ Redistributable (x64), which this PC does not have ` +
+  `(${missing.join(", ")} not found). Install it from ${VC_REDIST_URL} (free, from Microsoft) and press Install model again.`;
+
 /** Progress and cancellation for an install. `report` is told what is happening and how far along it is. */
 export interface InstallHooks {
   signal?: AbortSignal;
@@ -86,6 +103,9 @@ export async function sha256File(p: string, onBytes?: (n: number) => void, signa
 
 export async function installServer(hooks: InstallHooks = {}): Promise<void> {
   if (existsSync(SERVER_EXE)) return;
+  // Before 2 GB are downloaded for a program that cannot start.
+  const missing = missingVcRuntime();
+  if (missing.length) throw new ModelUnavailable(vcRuntimeMessage(missing));
   const zip = path.join(LLM_DIR, LLAMA_ASSET);
   // A zip left by an earlier attempt that failed while unpacking need not be fetched again.
   if (!(existsSync(zip) && (await sha256File(zip)) === LLAMA_SHA256)) {
@@ -362,7 +382,8 @@ async function launchOn(dev: string | null): Promise<void> {
   proc = mine;
   // Identity check: a stopped server's exit can arrive after the next one has
   // started, and must not make us forget (and so never kill) the new one.
-  mine.on("exit", () => { if (proc === mine) proc = null; });
+  let exitCode: number | null = null;
+  mine.on("exit", (code) => { exitCode = code; if (proc === mine) proc = null; });
   // A spawn that fails (antivirus blocking the exe, say) is an 'error' event,
   // and an unhandled one would take the whole backend down with it.
   let spawnError = "";
@@ -371,7 +392,15 @@ async function launchOn(dev: string | null): Promise<void> {
   for (let i = 0; i < HEALTH_WAIT_S; i++) {
     if (!proc) {
       if (spawnError) throw new ModelUnavailable(`llama-server could not be started: ${spawnError}`);
-      throw new DeviceFailure(`llama-server exited during startup ${where}`);
+      // 0xC0000135 is the loader saying a DLL it imports is not there. Another device cannot cure that.
+      if (exitCode !== null && exitCode >>> 0 === 0xc0000135) {
+        const missing = missingVcRuntime();
+        throw new ModelUnavailable(missing.length
+          ? vcRuntimeMessage(missing)
+          : `llama-server could not load one of its own files, so its folder is damaged: delete ${SERVER_DIR} and press Install model again`);
+      }
+      throw new DeviceFailure(`llama-server exited during startup ${where}` +
+        (exitCode !== null ? ` (code 0x${(exitCode >>> 0).toString(16)})` : ""));
     }
     if (await isHealthy()) {
       // Something answering /health is not proof it is our process: if the
