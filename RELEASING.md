@@ -41,7 +41,7 @@ commit**, and a **draft** release that a person reads before publishing. Code si
 
 3. Checks that need Windows and the model (`cd backend`):
    - `npm run selftest`: starts the real model and runs the contract's canaries.
-   - `npm run eval-llama -- <eval_set_v3.jsonl> out.json`: v3 scores 124/138; compare with the previous run, every
+   - `npm run eval-llama -- <eval_set_v3.jsonl> out.json`: v7b scores 122/138; compare with the previous run, every
      verdict should be identical.
    - `npm run parity -- <fixture>` and `npm run parity-explain -- <fixture>` if conversion or explanation code
      changed (fixtures: `parity/` in osava-slm; they hold real telemetry, never commit them).

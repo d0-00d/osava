@@ -15,7 +15,7 @@
 - **Security Dashboard**: Monitor real-time Windows Security Center status, including active antivirus software and Windows Firewall states across Domain, Private, and Public profiles.
 - **Security Hub (ClamAV Manager)**: Check installation status, and download, install, or uninstall ClamAV via automated MSI setup.
 - **AV Console**: Run ClamAV definition updates (`freshclam`), perform custom directory or full-system scans (`clamscan`), and view live output logs.
-- **Behaviour Triage** *(new in v0.3)*: Reads the Sysmon log and ranks the events that deserve a look, using a small language model (SENTRI-Classifier v3, a fine-tune of SmolLM3-3B) that runs on this PC. It triages; it does not prove. See [Behaviour triage](#behaviour-triage).
+- **Behaviour Triage** *(new in v0.3)*: Reads the Sysmon log and ranks the events that deserve a look, using a small language model (SENTRI-Classifier v7b, a fine-tune of SmolLM3-3B) that runs on this PC. It triages; it does not prove. See [Behaviour triage](#behaviour-triage).
 
 ---
 
@@ -26,7 +26,7 @@ Open the **Behaviour** tab. A small language model reads Sysmon events on this P
 **Setup (once)**
 
 1. **Sysmon**: press *Install Sysmon*. OSAVA installs it with a pinned, checksummed configuration and asks for administrator permission once. Installing it accepts Microsoft's Sysinternals Software License Terms for Sysmon on your behalf. It also adds you to *Event Log Readers*, so OSAVA itself never has to run as admin. Windows applies that at your **next sign-in**: sign out and back in once. If Sysmon is already installed (put there by hand, say) but you are not in that group, the button reads *Grant log access* and does only that step; signing out alone would never help.
-2. **Local model**: press *Install model*. OSAVA downloads a pinned llama.cpp build and the model, checking both against fixed checksums. It shows progress, **Stop** keeps what has arrived, and an interrupted download resumes where it left off. The model (`osava-smollm-q4.gguf`, 1.9 GB, SHA-256 `9ab1eba2…3d51`) is fetched from the address recorded in the build's `contract.json` (or `OSAVA_MODEL_URL`); a build without one cannot fetch it, so put the file in `%USERPROFILE%\.osava\llm\` (an Ollama store is also checked) and press the button to have it verified. The first start of the model can take a minute or two, while Windows checks the freshly downloaded programs; if the graphics path does not work on your PC, OSAVA starts it on the CPU instead.
+2. **Local model**: press *Install model*. OSAVA downloads a pinned llama.cpp build and the model, checking both against fixed checksums. It shows progress, **Stop** keeps what has arrived, and an interrupted download resumes where it left off. The model (`osava-smollm-q4.gguf`, 1.9 GB, SHA-256 `dc24b6b9…1f52`) is fetched from the address recorded in the build's `contract.json` (or `OSAVA_MODEL_URL`); a build without one cannot fetch it, so put the file in `%USERPROFILE%\.osava\llm\` (an Ollama store is also checked) and press the button to have it verified. The first start of the model can take a minute or two, while Windows checks the freshly downloaded programs; if the graphics path does not work on your PC, OSAVA starts it on the CPU instead.
 3. **Start monitoring** (or *Scan once*). Everything runs on this PC; events and verdicts are kept in `%USERPROFILE%\.osava\` and are never sent anywhere.
 
 **How to read it**
@@ -44,7 +44,7 @@ Open the **Behaviour** tab. A small language model reads Sysmon events on this P
 ```bash
 npm run unit             # monitor, scan pipeline, review rule, origin guard; needs no model
 npm run selftest         # starts the real model and runs the contract's canaries (Windows)
-npm run eval-llama -- <eval_set.jsonl> <out.json>   # held-out events; the shipped v3 scores 124/138
+npm run eval-llama -- <eval_set.jsonl> <out.json>   # held-out events; the shipped v7b scores 122/138
 npm run parity -- <fixture.json>                    # event -> model input, byte for byte against the Python
 npm run parity-explain -- <fixture.json>            # explain.ts against targets.py
 ```

@@ -150,8 +150,8 @@
   },
   "model": {
     "name": "osava-smollm",
-    "gguf_sha256": "9ab1eba279cf0c71c12fc6505a4b76511487eeeab61c3113b8191dc113043d51",
-    "gguf_bytes": 1915305440,
+    "gguf_sha256": "dc24b6b923ed4dc7b475f41f31a96a90a1cfa242241e35ea37de09ce10c11f52",
+    "gguf_bytes": 1915305376,
     "quantisation": "Q4_K_M"
   },
   "canaries": [

@@ -17,6 +17,24 @@ High, and 26% of a held-back half it was not.
 
 ### Changed
 
+- **A new model: SENTRI-Classifier v7b** (GGUF SHA-256 `dc24b6b9…1f52`, 1,915,305,376 bytes; `contract.json`
+  differs from v3's only in that checksum). Same recipe and prompt as v3, trained on 290 more synthetic rows of
+  normal workstation activity -- installers and updaters, per-user Windows services, AppX packages, per-user apps
+  on HTTPS, developer tools -- each family with malicious contrasts, then rebalanced to v3's class shares. Measured
+  through OSAVA's own path (`eval-llama`):
+
+  | | v3 | v7b |
+  |---|---|---|
+  | High on a working PC's benign behaviours, apps never seen in training (483) | 26.1% | 9.3% |
+  | High or Medium there (what lands in *Needs review*) | 33.1% | 20.1% |
+  | High in the Behaviour tab that prompted this (46 behaviours) | 22 | 2 |
+  | Held-out malicious events called High (of 56) | 55 | 53 (2 Medium) |
+  | Held-out suspicious events caught | 53% | 67% |
+  | Held-out accuracy (138) | 124 | 122 |
+
+  The two attacks it calls Medium are still in *Needs review*; all three models call the same one benign. The
+  training-data change was chosen after seeing an earlier candidate's (v7) misses on the held-out set, so that set
+  is not fully blind for v7b. Behaviours judged by v3 are judged again by v7b the next time they are seen.
 - **PowerShell's execution-policy probe is one behaviour.** PowerShell writes
   `__PSScriptPolicyTest_<random>.<random>.ps1` (or `.psm1`) to Temp every time it starts; each random name used
   to be a new behaviour, judged again. The signature now collapses the random part, in osava-slm's
@@ -172,7 +190,7 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 
 ### Known limits
 
-- **The model has no hosted address yet.** The contract can carry one, and `verify-release` fails until it does. Until then put `osava-smollm-q4.gguf` (SHA-256 `9ab1eba2…3d51`) in `%USERPROFILE%\.osava\llm\`, or set `OSAVA_MODEL_URL`, and press Install to have it verified. The weights' licence is undecided, and osava-slm has no LICENSE file (OSAVA itself is MIT).
+- **The model has no hosted address yet.** The contract can carry one, and `verify-release` fails until it does. Until then put `osava-smollm-q4.gguf` (SHA-256 `dc24b6b9…1f52`) in `%USERPROFILE%\.osava\llm\`, or set `OSAVA_MODEL_URL`, and press Install to have it verified. The weights' licence is undecided, and osava-slm has no LICENSE file (OSAVA itself is MIT).
 - **Medium is the weakest call.** Clear attacks and clearly normal activity are told apart far more reliably
   than the grey area between them. Verdicts are per event, with no memory of earlier ones, and a behaviour is
   decided the first time it is seen.
