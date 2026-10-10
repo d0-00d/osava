@@ -37,6 +37,9 @@ type Verdict = {
 type ScanSummary = {
   read: number; outOfDomain: number; known: number; classified: number;
   deferred: boolean; more: boolean; bookmark: number;
+  securityBookmark?: number;
+  /** logons were not assessed: the Security log refused this account */
+  securityUnreadable?: boolean;
 };
 
 type Monitor = {
@@ -123,6 +126,14 @@ const baseName = (p?: string) => (p ? p.slice(p.lastIndexOf("\\") + 1) : undefin
 
 /** The one line that says what the event actually did. */
 function detailOf(sample: string): string | undefined {
+  const eid = field(sample, "EventID");
+  if (eid === "4624" || eid === "4625") {
+    // A logon has no image or path: who, how and from where is the whole event. The contract calls the
+    // address a logon came from DestinationIp.
+    const from = field(sample, "DestinationIp");
+    return [field(sample, "User"), `logon type ${field(sample, "LogonType") ?? "?"}`, field(sample, "AuthPackage"),
+      from && from !== "-" ? `from ${from}` : undefined].filter(Boolean).join(" · ");
+  }
   const file = field(sample, "TargetFilename");
   if (file) return `→ ${file}`;
   const ip = field(sample, "DestinationIp");
@@ -303,7 +314,8 @@ export default function Behaviour() {
     setNotice({
       tone: "ok",
       text: `Read ${s.read} events: ${s.classified} new behaviour${s.classified === 1 ? "" : "s"} judged, ` +
-        `${s.known} already known, ${s.outOfDomain} not assessed.${s.more ? " More is waiting; scan again to continue." : ""}`,
+        `${s.known} already known, ${s.outOfDomain} not assessed.${s.more ? " More is waiting; scan again to continue." : ""}` +
+        (s.securityUnreadable ? " Logons were not assessed: this account cannot read the Security log." : ""),
     });
   });
 
@@ -356,13 +368,19 @@ export default function Behaviour() {
         eyebrow="Behaviour"
         status={headerStatus}
         title="Behaviour Triage"
-        subtitle="A local model reads your Sysmon log and ranks the events that deserve a look. It triages; it does not prove."
+        subtitle="A local model reads your Sysmon log and sign-in events and ranks what deserves a look. It triages; it does not prove."
       />
 
       {link === "offline" && <Notice tone="warn">Cannot reach the OSAVA backend on this machine. If you started OSAVA a moment ago, wait a few seconds.</Notice>}
       {link === "refused" && <Notice tone="warn">The OSAVA backend refused this window. Behaviour data is only served to the OSAVA app itself.</Notice>}
       {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
       {showStopped && <Notice tone="bad">Monitoring stopped: {m?.error?.message}</Notice>}
+      {!showStopped && m?.phase !== "off" && m?.lastScan?.securityUnreadable && (
+        <Notice tone="warn">
+          Logons are not being assessed. This account can read the Sysmon log but not the Security log, so sign-ins and
+          failed sign-ins are skipped until it can. Membership of Event Log Readers opens both.
+        </Notice>
+      )}
 
       {status && !ready && (
         <div className="osv-panel">
@@ -492,7 +510,9 @@ export default function Behaviour() {
           </div>
 
           <p className="osv-fine">
-            <b>Judges</b> Sysmon {coverage(status.supportedEventIds)} events.{" "}
+            <b>Judges</b> Sysmon {coverage(status.supportedEventIds)} events
+            {status.supportedEventIds.some((i) => i >= 1000) &&
+              <>, and logons ({status.supportedEventIds.filter((i) => i >= 1000).join(", ")}) from the Security log</>}.{" "}
             <b>Everything else</b> is counted under “Not assessed” — it is not treated as clean.
           </p>
           <p className="osv-fine" style={{ marginTop: 6 }}>

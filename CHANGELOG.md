@@ -51,6 +51,12 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 - **A trail when the backend cannot start.** It writes one line to `%USERPROFILE%\.osava\backend.log` when it starts, and a plain reason when it cannot (port 4000 taken by another program, a crash), then exits. The splash, which used to tell an installed user to run `cd backend && npm run dev`, now says another program may be using port 4000 and where to look.
 - The installer now has an identity: explicit targets, a per-user NSIS install, a publisher, copyright and
   descriptions instead of "A Tauri App".
+- **Logons.** Sign-ins and failed sign-ins (4624, 4625) are read from the Security log, filtered in the query,
+  with a bookmark of their own (RecordIds are numbered per channel), and judged before Sysmon's events under the
+  same per-scan budget. The same *Event Log Readers* membership opens both logs. If the Security log refuses the
+  account, Sysmon is still scanned and the Behaviour tab says logons are not being assessed, rather than staying
+  silent. This is the logon reading that was in progress as uncommitted work in the Windows copy, ported onto the
+  v0.3 pipeline.
 - **One window at a time.** Opening OSAVA again brings the first window forward.
 - **The model runtime's one outside requirement is checked first.** llama.cpp needs the Visual C++ Redistributable
   (x64), which a clean Windows may lack. Before downloading 2 GB, the Behaviour tab checks for it, names it and
@@ -63,8 +69,8 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
   antivirus product detected" and "No firewall product detected".** The window and its backend start together
   and the page loads first; within 100 ms it asked for the install status, the scan history and the system status,
   and all three were refused because the backend listens about half a second later. Only the splash retried. The
-  tabs depend on two answers asked for once, so they stayed missing for the whole session on a PC with ClamAV and
-  scan history. `npm run dev` hid it, because the backend is started by hand before the window. The page now asks
+  tabs, and the amber threat alert on the backdrop, depend on two answers asked for once, so they stayed missing
+  for the whole session on a PC with ClamAV and scan history. `npm run dev` hid it, because the backend is started by hand before the window. The page now asks
   once the splash has found the backend.
 - **Killing OSAVA (Task Manager, a crash, an installer replacing it) left its backend running**, holding port 4000
   and the model in memory, and the next launch talked to the old copy. The window now gives the backend its pid
@@ -128,9 +134,7 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 
 ### Known limits
 
-- **The model has no hosted address yet.** The contract can carry one, and `verify-release` fails until it does. Until then put `osava-smollm-q4.gguf` (SHA-256 `9ab1eba2…3d51`) in `%USERPROFILE%\.osava\llm\`, or set `OSAVA_MODEL_URL`, and press Install to have it verified. The weights' licence is undecided, and neither repository has a LICENSE file.
-- **Logon events (4624/4625) are not read.** They are in the model's training, but the reader opens only the
-  Sysmon channel.
+- **The model has no hosted address yet.** The contract can carry one, and `verify-release` fails until it does. Until then put `osava-smollm-q4.gguf` (SHA-256 `9ab1eba2…3d51`) in `%USERPROFILE%\.osava\llm\`, or set `OSAVA_MODEL_URL`, and press Install to have it verified. The weights' licence is undecided, and osava-slm has no LICENSE file (OSAVA itself is MIT).
 - **Medium is the weakest call.** Clear attacks and clearly normal activity are told apart far more reliably
   than the grey area between them. Verdicts are per event, with no memory of earlier ones, and a behaviour is
   decided the first time it is seen.
@@ -171,6 +175,14 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
   the setup put there and leaves only `%USERPROFILE%\.osava`. It was run as a renamed copy of the same build
   (another product name and identifier), so it could not touch a v0.1 install that was already on the machine.
   The `.msi` was not run: it installs for all users and needs administrator rights.
+- **Logons, with nothing mocked on the reading side.** The production PowerShell reader, with the new query, was
+  run on public Security captures (EVTX-ATTACK-SAMPLES) whose event ids were counted independently. Two mixed
+  captures (a 4624 among 4673, 4688, 4611, 4672 and 1102 events) returned exactly their 4624 and nothing else. An
+  18-logon capture, read five and then seven at a time while carrying the bookmark as the pipeline does, came back
+  as exactly those 18, in order, with no gap and no repeat; a capture with three 4624s and a 4625 did the same, and
+  the 4625 becomes a "Failed Logon" body. The pipeline's handling (separate bookmarks, logons first under a shared
+  budget, an unreadable Security log reported without stopping Sysmon, any other failure failing the scan, an old
+  state file loading) is covered by unit tests, each checked by reintroducing its bug.
 - *Not exercised:* a live Sysmon feed. The account used for development is not yet in *Event Log Readers*, so
   the live log could only be tested for its failure path (`LOG_ACCESS_DENIED`) and through exported logs. Nor a
   Windows that has never seen OSAVA, or one without the Visual C++ runtime (that failure was run for real by

@@ -19,9 +19,9 @@ import { classify, reviewReason } from "../src/services/behaviour/classifier";
 import { CONTRACT } from "../src/services/behaviour/contractSpec";
 import { createMonitor, MAX_FAILURES, type MonitorDeps } from "../src/services/behaviour/monitor";
 import { PAGE, scanOnce, type ScanSummary, type Source } from "../src/services/behaviour/pipeline";
-import { LogAccessDenied, LogMissing, type LogRecord } from "../src/services/behaviour/reader";
+import { LogAccessDenied, LogMissing, SCRIPT, SECURITY_EVENT_IDS, SECURITY_LOG, SYSMON_LOG, type LogRecord } from "../src/services/behaviour/reader";
 import { ModelUnavailable } from "../src/services/behaviour/runtime";
-import { readState } from "../src/services/behaviour/store";
+import { readState, writeState } from "../src/services/behaviour/store";
 import { ALLOWED_ORIGINS, localOnly } from "../src/routes/localOnly";
 import { download, DownloadError } from "../src/services/behaviour/download";
 import { cancelInstall, installDone, installState, startInstall } from "../src/services/behaviour/installer";
@@ -240,10 +240,130 @@ test("reviewReason: the one definition of 'needs review'", () => {
   assert.equal(reviewReason({ failedOpen: false, severity: "critical", margin: 0.9 }), "not_benign");
 });
 
+
+// ── logons from the Security log ───────────────────────────────────────────
+
+const logon = (id: number, over: Record<string, string> = {}, eid = 4624) => rec(id, eid, {
+  TargetUserName: "alice", TargetDomainName: "CORP", LogonType: "3", AuthenticationPackageName: "NTLM",
+  IpAddress: "10.0.0.7", IpPort: "52114", WorkstationName: "KALI", ...over });
+const failedLogon = (id: number, over: Record<string, string> = {}) => logon(id, over, 4625);
+const NO_LOGONS_NEEDED = logOf([]);
+
+/** Records what each channel was asked for, so a test can see which bookmark went where. */
+function spied(sysmon: LogRecord[], security: LogRecord[]) {
+  const asked = { sysmon: [] as number[], security: [] as number[] };
+  const sources = {
+    sysmon: async (after: number, max: number) => { asked.sysmon.push(after); return logOf(sysmon)(after, max); },
+    security: async (after: number, max: number) => { asked.security.push(after); return logOf(security)(after, max); },
+  };
+  return { asked, sources };
+}
+
+test("logons are bookmarked apart from Sysmon, because RecordIds are numbered per channel", async () => {
+  // Security RecordIds are far larger than Sysmon's here, as they are on a real machine.
+  const { asked, sources } = spied([svchost(3), wordShell(4)], [logon(9001), logon(9002, { LogonType: "10" })]);
+  decide = bySev;
+  const s1 = await scanOnce(25, sources);
+  assert.equal(s1.securityBookmark, 9002);
+  assert.equal(s1.bookmark, 4);
+  assert.equal(s1.classified, 4, "two logon behaviours and two process behaviours");
+  const st = await readState();
+  assert.deepEqual([st.securityBookmark, st.bookmark], [9002, 4]);
+
+  const s2 = await scanOnce(25, sources);
+  assert.equal(s2.read, 0, "nothing new in either channel; neither bookmark was mistaken for the other");
+  assert.deepEqual(asked.security, [0, 9002]);
+  assert.deepEqual(asked.sysmon, [0, 4]);
+});
+
+test("logons are judged first and share the per-scan budget with Sysmon", async () => {
+  const { sources } = spied([wordShell(1)], [logon(10)]);
+  const s1 = await scanOnce(1, sources);
+  assert.equal(s1.classified, 1);
+  assert.ok(calls[0]!.includes("EventID: 4624"), "the logon took the one slot");
+  assert.deepEqual([s1.deferred, s1.more, s1.bookmark], [true, true, 0], "the process waits for the next scan, unskipped");
+  const s2 = await scanOnce(1, sources);
+  assert.deepEqual([s2.classified, s2.bookmark], [1, 1]);
+  assert.ok(calls[1]!.includes("EventID: 1\n"), "and is judged then");
+});
+
+test("when logons spend the whole budget, Sysmon waits for the next scan and says so", async () => {
+  const { asked, sources } = spied([wordShell(1)], [logon(10), logon(11, { LogonType: "10" })]);
+  const s1 = await scanOnce(1, sources);
+  assert.deepEqual([s1.classified, s1.deferred, s1.more], [1, true, true]);
+  assert.equal(s1.securityBookmark, 10, "the second logon was not skipped; the bookmark stops before it");
+  assert.deepEqual(asked.sysmon, [], "Sysmon was not even read");
+  const s2 = await scanOnce(25, sources);
+  assert.equal(s2.securityBookmark, 11);
+  assert.equal(s2.bookmark, 1);
+  assert.equal(s2.classified, 2, "the second logon, then the process");
+});
+
+test("a Security log that refuses this account is reported, and Sysmon is still scanned", async () => {
+  decide = bySev;
+  const sources = {
+    sysmon: logOf([wordShell(1), whoami(2)]),
+    security: async () => { throw new LogAccessDenied("denied"); },
+  };
+  const s = await scanOnce(25, sources);
+  assert.equal(s.securityUnreadable, true);
+  assert.equal(s.classified, 2);
+  assert.equal(s.bookmark, 2);
+  assert.equal((await readState()).bookmark, 2, "and what was decided was saved");
+});
+
+test("any other failure reading logons fails the scan; it is not quietly skipped", async () => {
+  const { asked, sources } = spied([wordShell(1)], []);
+  const broken = { ...sources, security: async () => { throw new Error("powershell.exe could not be started"); } };
+  await assert.rejects(scanOnce(25, broken), /could not be started/);
+  assert.deepEqual(asked.sysmon, [], "and Sysmon was not read behind its back");
+  assert.equal((await readState()).bookmark, 0);
+});
+
+test("a state file from before logons were read still loads, and logons start from the beginning", async () => {
+  await writeState({ bookmark: 7, verdicts: {}, outOfDomain: 0 });
+  const { asked, sources } = spied([], [logon(40)]);
+  const s = await scanOnce(25, sources);
+  assert.deepEqual(asked.security, [0]);
+  assert.deepEqual(asked.sysmon, [7]);
+  assert.equal(s.securityBookmark, 40);
+  assert.equal(s.bookmark, 7);
+});
+
+test("a full page of logons means more is waiting even when the budget is not spent", async () => {
+  const many = Array.from({ length: PAGE }, (_, i) => logon(i + 1));
+  const s = await scanOnce(25, { sysmon: NO_LOGONS_NEEDED, security: logOf(many) });
+  assert.equal(s.more, true);
+  assert.equal(s.securityBookmark, PAGE);
+  assert.equal(s.classified, 1, "five hundred identical logons are one behaviour");
+  assert.equal(s.known, PAGE - 1);
+});
+
+test("a failed logon is a different behaviour from a successful one", async () => {
+  const s = await scanOnce(25, { sysmon: NO_LOGONS_NEEDED, security: logOf([logon(1), failedLogon(2)]) });
+  assert.equal(s.classified, 2);
+  assert.ok(calls.some((c) => c.includes("EventType: Failed Logon")));
+});
+
+test("the log query filters logons in the query, reads oldest first, and leaves Sysmon unfiltered", () => {
+  const sec = SCRIPT(SECURITY_LOG, 77, 500, SECURITY_EVENT_IDS);
+  assert.match(sec, /-LogName 'Security'/);
+  assert.match(sec, /-Oldest/, "without it a backlog would come back newest-first and be skipped");
+  assert.match(sec, /\(EventID=4624 or EventID=4625\) and EventRecordID > 77/);
+  const sys = SCRIPT(SYSMON_LOG, 5, 500, []);
+  assert.doesNotMatch(sys, /EventID=/);
+  assert.match(sys, /EventRecordID > 5/);
+  // an exported capture is read with the same filter, which is how the reader is replayed against real logs
+  assert.match(SCRIPT("C:\\caps\\o'brien.evtx", 0, 10, SECURITY_EVENT_IDS), /-Path 'C:\\caps\\o''brien\.evtx'/);
+});
+
 // ── monitor ────────────────────────────────────────────────────────────────
 
 const summary = (over: Partial<ScanSummary> = {}): ScanSummary =>
-  ({ read: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false, bookmark: 0, ...over });
+  ({
+    read: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false,
+    bookmark: 0, securityBookmark: 0, securityUnreadable: false, ...over,
+  });
 const FAST = { minIntervalMs: 5, catchUpMs: 5, retryBaseMs: 5 };
 
 function deps(over: Partial<MonitorDeps> = {}) {

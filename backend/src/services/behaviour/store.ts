@@ -19,7 +19,14 @@ export interface BehaviourRecord extends Verdict {
 }
 
 export interface BehaviourState {
+  /** last Sysmon RecordId processed */
   bookmark: number;
+  /**
+   * Last Security-log RecordId processed. Kept apart from `bookmark` because RecordIds are numbered per
+   * channel: sharing one would skip or re-read events. Optional so a state file written before logons
+   * were read still loads.
+   */
+  securityBookmark?: number;
   /** keyed by behaviour signature */
   verdicts: Record<string, BehaviourRecord>;
   /** events skipped because the model was not trained on their EventID */

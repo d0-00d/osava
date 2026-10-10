@@ -94,13 +94,12 @@ items about the launch, a second launch and closing or killing the app.
   check the SHA-256 and proceed.
 - **The model has no hosted address**, and the weights' licence is undecided. `verify-release` fails until both
   are settled.
-- **No LICENSE file** in either repository: until one is added, nobody else may legally use or redistribute
-  the code.
+- **osava-slm has no LICENSE file.** OSAVA itself is MIT (`LICENSE`). Until the model's repository has a licence
+  too, nobody else may legally use or redistribute that code or the weights it trains.
 - **No auto-update.** A new version is a new installer.
 - **The window talks to a fixed port (4000)** and trusts whatever answers there. A program that binds 4000
   first can impersonate the backend. A per-launch token and a free port, handed to both sides by the shell,
   would fix it; it is bigger than an alpha fix.
 - **Uninstall leaves `%USERPROFILE%\.osava`** (about 2 GB) and Sysmon in place.
 - **Downloads do not use the system proxy** (Node's `fetch` ignores it); behind a proxy, copy the model in by hand.
-- **Windows 10 / 11 x64 only**, and Sysmon's log is read, not the Security log: logons (4624/4625) are in the
-  model's training but not yet read.
+- **Windows 10 / 11 x64 only.**

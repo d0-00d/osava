@@ -1,4 +1,4 @@
-// Read new Sysmon records, keep the ones the model can judge, and classify
+// Read new Sysmon records and logons, keep the ones the model can judge, and classify
 // each NEW behaviour once. Known behaviours only bump a counter: a working
 // machine's 52,791 benign events collapsed to 1,788 signatures, so after a
 // warm-up the model is called on a small fraction of what Sysmon produces.
@@ -6,7 +6,7 @@
 import { CONTRACT } from "./contractSpec";
 import { classify } from "./classifier";
 import { toContractBody } from "./convert";
-import { readSysmon, type LogRecord } from "./reader";
+import { LogAccessDenied, readSecurity, readSysmon, type LogRecord } from "./reader";
 import { baseUrl, currentApiKey } from "./runtime";
 import { parseBody, signature } from "./signature";
 import { readState, writeState } from "./store";
@@ -21,13 +21,23 @@ export interface ScanSummary {
   classified: number;
   /** new behaviours left for the next scan (per-scan budget reached) */
   deferred: boolean;
-  /** more is waiting right now (budget reached, or the log page came back full) */
+  /** more is waiting right now (budget reached, or a log page came back full) */
   more: boolean;
+  /** last Sysmon RecordId handled */
   bookmark: number;
+  /** last Security-log RecordId handled (RecordIds are numbered per channel) */
+  securityBookmark: number;
+  /** logons were not assessed because the Security log refused this account */
+  securityUnreadable: boolean;
 }
 
 /** Where records come from. The Sysmon log in production; a script in tests. */
 export type Source = (afterRecordId: number, max: number) => Promise<LogRecord[]>;
+
+/** The two channels a scan reads. `security: null` scans Sysmon alone. */
+export interface Sources { sysmon: Source; security: Source | null }
+
+const LIVE: Sources = { sysmon: readSysmon, security: readSecurity };
 
 let inflight: Promise<ScanSummary> | null = null;
 
@@ -40,9 +50,11 @@ export const scanning = (): boolean => inflight !== null;
  * than a second one reading the same bookmark and classifying the same
  * behaviours twice. It therefore also gets that scan's `maxNew`.
  */
-export function scanOnce(maxNew = 25, source: Source = readSysmon): Promise<ScanSummary> {
+export function scanOnce(maxNew = 25, sources: Sources | Source = LIVE): Promise<ScanSummary> {
+  // A bare Source is a Sysmon-only scan, which is how tests script one channel.
+  const src = typeof sources === "function" ? { sysmon: sources, security: null } : sources;
   if (!inflight) {
-    const p = run(maxNew, source);
+    const p = run(maxNew, src);
     inflight = p;
     const clear = () => { if (inflight === p) inflight = null; };
     p.then(clear, clear);
@@ -50,27 +62,27 @@ export function scanOnce(maxNew = 25, source: Source = readSysmon): Promise<Scan
   return inflight;
 }
 
-async function run(maxNew: number, source: Source): Promise<ScanSummary> {
+async function run(maxNew: number, src: Sources): Promise<ScanSummary> {
   const st = await readState();
-  const recs = await source(st.bookmark, PAGE);
   const sum: ScanSummary = {
-    read: recs.length, outOfDomain: 0, known: 0, classified: 0,
-    deferred: false, more: recs.length >= PAGE, bookmark: st.bookmark,
+    read: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false,
+    bookmark: st.bookmark, securityBookmark: st.securityBookmark ?? 0, securityUnreadable: false,
   };
   const model = CONTRACT.model.gguf_sha256;
   let dirty = false;
 
-  // Whatever happens below -- the model times out on record 20 of 25 -- what
-  // was decided so far is saved together with the bookmark that goes with it.
-  // The bookmark only advances past a record once that record is fully
-  // handled, so a partial save is always consistent and the next scan resumes
-  // at the record that failed instead of re-deciding the ones before it.
-  try {
+  /**
+   * Handle one channel's records in order. Returns false once the per-scan budget of new behaviours is
+   * spent, leaving that channel's bookmark on the last record fully handled, so the rest are read again
+   * next scan instead of being skipped. The bookmark only advances past a record once that record is
+   * fully handled, so a partial save is always consistent.
+   */
+  async function drain(recs: LogRecord[], setBookmark: (recordId: number) => void): Promise<boolean> {
     for (const r of recs) {
       const body = toContractBody(r);
       if (body === null) {
         if (!CONTRACT.input.supported_event_ids.includes(r.eid)) sum.outOfDomain++;
-        st.bookmark = r.recordId;
+        setBookmark(r.recordId);
         dirty = true;
         continue;
       }
@@ -82,16 +94,14 @@ async function run(maxNew: number, source: Source): Promise<ScanSummary> {
         seen.count++;
         seen.lastSeen = r.time;
         sum.known++;
-        st.bookmark = r.recordId;
+        setBookmark(r.recordId);
         dirty = true;
         continue;
       }
       if (sum.classified >= maxNew) {
-        // stop here WITHOUT advancing the bookmark, so this record and the rest
-        // are read again next scan instead of being skipped
         sum.deferred = true;
         sum.more = true;
-        break;
+        return false;
       }
       const v = await classify(body, { baseUrl: baseUrl(), apiKey: currentApiKey() });
       st.verdicts[sig] = {
@@ -99,12 +109,46 @@ async function run(maxNew: number, source: Source): Promise<ScanSummary> {
         firstSeen: seen?.firstSeen ?? r.time, lastSeen: r.time, count: (seen?.count ?? 0) + 1,
       };
       sum.classified++;
-      st.bookmark = r.recordId;
+      setBookmark(r.recordId);
       dirty = true;
+    }
+    return true;
+  }
+
+  // Whatever happens below -- the model times out on record 20 of 25 -- what
+  // was decided so far is saved together with the bookmarks that go with it,
+  // and the next scan resumes at the record that failed instead of re-deciding
+  // the ones before it.
+  try {
+    // Logons go first: once filtered they are few and high in signal (failed logons are how brute force
+    // shows up), and a Sysmon warm-up that spends the whole budget on new behaviours would otherwise hold
+    // them back every scan.
+    let budgetLeft = true;
+    if (src.security) {
+      try {
+        const logons = await src.security(sum.securityBookmark, PAGE);
+        sum.read += logons.length;
+        if (logons.length >= PAGE) sum.more = true;
+        budgetLeft = await drain(logons, (id) => { st.securityBookmark = id; });
+      } catch (e) {
+        // Both channels are opened by the same group, so they should fail together. But logons were added
+        // to a working Sysmon pipeline, and being unable to read them must not be what stops it. It is
+        // reported (`securityUnreadable`, shown in the Behaviour tab), never silent.
+        if (!(e instanceof LogAccessDenied)) throw e;
+        sum.securityUnreadable = true;
+      }
+    }
+
+    if (budgetLeft) {
+      const events = await src.sysmon(st.bookmark, PAGE);
+      sum.read += events.length;
+      if (events.length >= PAGE) sum.more = true;
+      await drain(events, (id) => { st.bookmark = id; });
     }
   } finally {
     st.outOfDomain += sum.outOfDomain;
     sum.bookmark = st.bookmark;
+    sum.securityBookmark = st.securityBookmark ?? 0;
     if (dirty) await writeState(st);
   }
   return sum;

@@ -66,6 +66,7 @@ router.get("/api/behaviour/status", async (_req, res) => {
       outOfDomain: st.outOfDomain,
       supportedEventIds: CONTRACT.input.supported_event_ids,
       bookmark: st.bookmark,
+      securityBookmark: st.securityBookmark ?? 0,
     });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });

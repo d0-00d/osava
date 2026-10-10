@@ -34,7 +34,7 @@ Open the **Behaviour** tab. A small language model reads Sysmon events on this P
 - The model judges one event at a time, with no memory of earlier ones. A behaviour (the event with who and where removed: user, IP address, port) is judged the first time it is seen and only counted afterwards.
 - *Severity* is the model's call. The reasons and tags are computed from the event by fixed rules, so they can only quote what is in it.
 - If the model gives no usable answer, OSAVA escalates the event rather than calling it clean ("No answer").
-- It judges Sysmon process (1), network (3), image-load (7), file (11) and registry (12, 13) events. Everything else is counted under *Not assessed*, never treated as clean. Logon events (4624/4625) are in the model's training, but OSAVA reads only the Sysmon log for now.
+- It judges Sysmon process (1), network (3), image-load (7), file (11) and registry (12, 13) events. Everything else is counted under *Not assessed*, never treated as clean. It also judges logons (4624, 4625) from the Security log, which the same *Event Log Readers* membership opens; if that log cannot be read, the Behaviour tab says logons are not being assessed.
 - *Medium* is the weakest call: clear attacks and clearly normal activity are told apart far more reliably than the grey area between them. Read None and Low as "nothing stood out", not "safe".
 
 **Checking a build** (from `backend/`)
