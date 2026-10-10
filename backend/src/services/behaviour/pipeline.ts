@@ -10,7 +10,7 @@ import { ownTracker } from "./own";
 import { LogAccessDenied, readSecurity, readSysmon, type LogRecord } from "./reader";
 import { baseUrl, currentApiKey } from "./runtime";
 import { parseBody, signature } from "./signature";
-import { readState, writeState } from "./store";
+import { exclusive, readState, writeState } from "./store";
 
 /** Records read from the log per scan. */
 export const PAGE = 500;
@@ -57,7 +57,7 @@ export function scanOnce(maxNew = 25, sources: Sources | Source = LIVE): Promise
   // A bare Source is a Sysmon-only scan, which is how tests script one channel.
   const src = typeof sources === "function" ? { sysmon: sources, security: null } : sources;
   if (!inflight) {
-    const p = run(maxNew, src);
+    const p = exclusive(() => run(maxNew, src));
     inflight = p;
     const clear = () => { if (inflight === p) inflight = null; };
     p.then(clear, clear);
@@ -114,6 +114,7 @@ async function run(maxNew: number, src: Sources): Promise<ScanSummary> {
         return false;
       }
       const v = await classify(body, { baseUrl: baseUrl(), apiKey: currentApiKey() });
+      // A new verdict replaces the record whole, so a person's "expected" on the old one does not carry over.
       st.verdicts[sig] = {
         ...v, signature: sig, sample: body,
         firstSeen: seen?.firstSeen ?? r.time, lastSeen: r.time, count: (seen?.count ?? 0) + 1,

@@ -21,8 +21,11 @@ import { createMonitor, MAX_FAILURES, type MonitorDeps } from "../src/services/b
 import { PAGE, scanOnce, type ScanSummary, type Source } from "../src/services/behaviour/pipeline";
 import { LogAccessDenied, LogMissing, SCRIPT, SECURITY_EVENT_IDS, SECURITY_LOG, SYSMON_LOG, type LogRecord } from "../src/services/behaviour/reader";
 import { ModelUnavailable } from "../src/services/behaviour/runtime";
-import { readState, writeState } from "../src/services/behaviour/store";
+import { isExpected, markExpected, readState, writeState } from "../src/services/behaviour/store";
 import { parseBody, signature } from "../src/services/behaviour/signature";
+import express from "express";
+import behaviourRoutes from "../src/routes/behaviour";
+import { API_PORT } from "../src/config";
 import { ALLOWED_ORIGINS, localOnly } from "../src/routes/localOnly";
 import { download, DownloadError } from "../src/services/behaviour/download";
 import { cancelInstall, installDone, installState, startInstall } from "../src/services/behaviour/installer";
@@ -445,6 +448,96 @@ test("PowerShell's policy-test files are one behaviour, whatever random name eac
   assert.ok(a.endsWith("__psscriptpolicytest_<rand>.ps1"), a);
   assert.ok(file("__PSScriptPolicyTest_oq45noi3.ipe.psm1").endsWith("<rand>.psm1"), "the module variant is its own behaviour");
   assert.notEqual(file("oq45noi3.ipe.ps1"), file("atkbm2b4.2ro.ps1"), "any other script in Temp keeps its name");
+});
+
+// ── marked as expected ─────────────────────────────────────────────────────
+
+test("expected: a mark made while a scan holds the state is not written over, and neither is the scan", async () => {
+  decide = bySev;
+  await scanOnce(25, logOf([wordShell(1)]));
+  const sig = Object.keys((await readState()).verdicts)[0]!;
+  delayMs = 30;
+  const scan = scanOnce(25, logOf([wordShell(1), whoami(2)]));   // reads the state, then waits for the model
+  const mark = markExpected(sig, true);
+  await Promise.all([scan, mark]);
+  const st = await readState();
+  assert.equal(isExpected(st.verdicts[sig]!), true, "the mark survived the scan's write");
+  assert.equal(Object.keys(st.verdicts).length, 2, "the scan's new verdict survived the mark's write");
+  assert.equal(st.verdicts[sig]!.severity, "high", "the model's verdict is unchanged");
+  assert.equal(st.verdicts[sig]!.expected!.severity, "high", "and the mark records what was accepted");
+  await markExpected(sig, false);
+  assert.equal(isExpected((await readState()).verdicts[sig]!), false, "a mark can be taken back");
+  assert.equal(await markExpected("no such behaviour", true), null);
+});
+
+test("expected: a mark holds for the model that made the verdict; a new model's verdict asks again", async () => {
+  decide = bySev;
+  await scanOnce(25, logOf([wordShell(1)]));
+  const sig = Object.keys((await readState()).verdicts)[0]!;
+  await markExpected(sig, true);
+  const original = CONTRACT.model.gguf_sha256;
+  assert.ok(original, "the contract is bound to a model");
+  CONTRACT.model.gguf_sha256 = "e".repeat(64);
+  try {
+    await scanOnce(25, logOf([wordShell(1), wordShell(2, "CORP\\carol")]));
+    const v = (await readState()).verdicts[sig]!;
+    assert.equal(v.modelSha256, "e".repeat(64));
+    assert.equal(v.expected, undefined);
+    assert.equal(isExpected(v), false);
+  } finally {
+    CONTRACT.model.gguf_sha256 = original;
+  }
+  // and a mark copied from another model's verdict (an old state file, say) does not count
+  const st = await readState();
+  st.verdicts[sig]!.expected = { at: new Date().toISOString(), modelSha256: "d".repeat(64), severity: "high" };
+  assert.equal(isExpected(st.verdicts[sig]!), false);
+});
+
+test("expected: through the API, a marked behaviour leaves 'Needs review', sorts after the open ones, and comes back when unmarked", async () => {
+  decide = bySev;
+  await scanOnce(25, logOf([wordShell(1), whoami(2), svchost(3)]));
+  const app = express();
+  app.use(express.json());
+  app.use(behaviourRoutes);
+  const srv = app.listen(0, "127.0.0.1");
+  await new Promise((r) => srv.once("listening", r));
+  const port = (srv.address() as { port: number }).port;
+  // The origin guard wants OSAVA's own Host header, which fetch() will not let a caller set.
+  const req = (method: string, p: string, body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+    const data = body === undefined ? undefined : JSON.stringify(body);
+    const q = http.request({ host: "127.0.0.1", port, path: p, method,
+      headers: { Host: `localhost:${API_PORT}`, ...(data ? { "content-type": "application/json" } : {}) } }, (res) => {
+      let t = "";
+      res.on("data", (c) => (t += c));
+      res.on("end", () => resolve({ status: res.statusCode!, body: t ? JSON.parse(t) : null }));
+    });
+    q.on("error", reject);
+    q.end(data);
+  });
+  const sevs = async (view: string) => ((await req("GET", `/api/behaviour/verdicts?view=${view}`)).body as { severity: string }[]).map((v) => v.severity);
+  try {
+    const review = (await req("GET", "/api/behaviour/verdicts?view=review")).body as { signature: string; severity: string; expected: unknown }[];
+    assert.deepEqual(review.map((v) => v.severity), ["high", "medium"]);
+    assert.equal(review[0]!.expected, null);
+
+    const r = await req("POST", "/api/behaviour/verdicts/expected", { signature: review[0]!.signature, expected: true });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.severity, "high", "the verdict is still the model's");
+    assert.equal(r.body.needsReview, false);
+    assert.equal(r.body.reviewReason, "not_benign", "and so is the reason it was flagged");
+    assert.equal(r.body.expected.severity, "high");
+    assert.deepEqual(await sevs("review"), ["medium"]);
+    assert.deepEqual(await sevs("all"), ["medium", "high", "none"], "an expected High sorts after what still needs review");
+
+    assert.equal((await req("POST", "/api/behaviour/verdicts/expected", { signature: review[0]!.signature, expected: false })).status, 200);
+    assert.deepEqual(await sevs("review"), ["high", "medium"]);
+
+    assert.equal((await req("POST", "/api/behaviour/verdicts/expected", { signature: "nope", expected: true })).status, 404);
+    assert.equal((await req("POST", "/api/behaviour/verdicts/expected", { signature: review[0]!.signature })).status, 400);
+    assert.equal((await req("POST", "/api/behaviour/verdicts/expected", { signature: review[0]!.signature, expected: "yes" })).status, 400);
+  } finally {
+    srv.close();
+  }
 });
 
 // ── monitor ────────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ import { cancelInstall, installState, startInstall } from "../services/behaviour
 import {
   MODEL_PATH, ModelUnavailable, SERVER_EXE, deviceUsed, isHealthy, modelVerified, startServer,
 } from "../services/behaviour/runtime";
-import { readState } from "../services/behaviour/store";
+import { isExpected, markExpected, readState, type BehaviourRecord } from "../services/behaviour/store";
 import { ElevationDenied, installSysmon, sysmonStatus, type SysmonService } from "../services/behaviour/sysmonInstall";
 import { localOnly } from "./localOnly";
 
@@ -17,6 +17,18 @@ const router = express.Router();
 router.use("/api/behaviour", localOnly);
 
 const RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, none: 0 };
+
+/**
+ * A verdict as the UI shows it. `needsReview` is false once a person has marked the behaviour as expected;
+ * `reviewReason` stays the model's, and `expected` says who decided what.
+ */
+function present(v: BehaviourRecord) {
+  const expected = isExpected(v);
+  return {
+    ...v, expected: expected ? { at: v.expected!.at, severity: v.expected!.severity } : null,
+    needsReview: v.needsReview && !expected, reviewReason: reviewReason(v),
+  };
+}
 
 /** Problems the user can fix get a stable `code` the UI can act on. */
 function fail(res: express.Response, e: unknown) {
@@ -43,11 +55,12 @@ async function sysmonInfo(): Promise<SysmonInfo> {
 router.get("/api/behaviour/status", async (_req, res) => {
   try {
     const st = await readState();
-    const counts = { benign: 0, suspicious: 0, malicious: 0, needsReview: 0 };
+    const counts = { benign: 0, suspicious: 0, malicious: 0, needsReview: 0, expected: 0 };
     for (const v of Object.values(st.verdicts)) {
       const cls = (CONTRACT.severity.bucket[v.severity] ?? "suspicious") as keyof typeof counts;
       counts[cls]++;
-      if (v.needsReview) counts.needsReview++;
+      if (isExpected(v)) counts.expected++;
+      else if (v.needsReview) counts.needsReview++;
     }
     res.json({
       sysmon: await sysmonInfo(),
@@ -126,14 +139,31 @@ router.get("/api/behaviour/verdicts", async (req, res) => {
   const onlyReview = req.query["view"] === "review";
   const limit = Math.min(Math.max(Math.floor(Number(req.query["limit"])) || 200, 1), 1000);
   const list = Object.values(st.verdicts)
+    .map(present)
     .filter((v) => !onlyReview || v.needsReview)
     .sort((a, b) =>
       Number(b.needsReview) - Number(a.needsReview) ||
       (RANK[b.severity] ?? 0) - (RANK[a.severity] ?? 0) ||
       b.lastSeen.localeCompare(a.lastSeen))
-    .slice(0, limit)
-    .map((v) => ({ ...v, reviewReason: reviewReason(v) }));
+    .slice(0, limit);
   res.json(list);
+});
+
+// A person says this behaviour is normal on this PC (or takes that back). The model's verdict is kept as it is;
+// the behaviour only leaves "Needs review". It holds for the verdict of the model that made it: once a different
+// model judges the behaviour, it asks for review again.
+router.post("/api/behaviour/verdicts/expected", async (req, res) => {
+  const { signature, expected } = (req.body ?? {}) as { signature?: unknown; expected?: unknown };
+  if (typeof signature !== "string" || typeof expected !== "boolean") {
+    return res.status(400).json({ error: "Send { signature: string, expected: boolean }." });
+  }
+  try {
+    const v = await markExpected(signature, expected);
+    if (!v) return res.status(404).json({ error: "There is no such behaviour." });
+    res.json(present(v));
+  } catch (e) {
+    fail(res, e);
+  }
 });
 
 export default router;

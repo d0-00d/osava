@@ -32,6 +32,8 @@ type Verdict = {
   firstSeen: string;
   lastSeen: string;
   count: number;
+  /** a person marked this behaviour as normal here; the verdict above is still the model's */
+  expected?: { at: string; severity: string } | null;
 };
 
 type ScanSummary = {
@@ -83,7 +85,7 @@ type Status = {
   monitor: Monitor;
   scanning: boolean;
   behaviours: number;
-  counts: { benign: number; suspicious: number; malicious: number; needsReview: number };
+  counts: { benign: number; suspicious: number; malicious: number; needsReview: number; expected?: number };
   outOfDomain: number;
   supportedEventIds: number[];
   bookmark: number;
@@ -92,8 +94,10 @@ type Status = {
 type Busy = "sysmon" | "runtime" | "monitor" | "scan" | "unload" | null;
 type Reply<T> = { ok: boolean; status: number; body: (T & { error?: string; code?: string }) | null };
 
-async function call<T>(path: string, method: "GET" | "POST" = "GET"): Promise<Reply<T>> {
-  const r = await fetch(`${API}${path}`, { method });
+async function call<T>(path: string, method: "GET" | "POST" = "GET", send?: unknown): Promise<Reply<T>> {
+  const r = await fetch(`${API}${path}`, send === undefined ? { method } : {
+    method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(send),
+  });
   let body: Reply<T>["body"] = null;
   try { body = await r.json(); } catch { /* an empty or non-JSON reply */ }
   return { ok: r.ok, status: r.status, body };
@@ -174,7 +178,9 @@ function Kpi({ label, value, note, attn, small }: { label: string; value: string
   );
 }
 
-function VerdictRow({ v, open, onToggle }: { v: Verdict; open: boolean; onToggle: () => void }) {
+function VerdictRow({ v, open, onToggle, marking, onExpected }: {
+  v: Verdict; open: boolean; onToggle: () => void; marking: boolean; onExpected: (on: boolean) => void;
+}) {
   const image = baseName(field(v.sample, "Image"));
   const kind = field(v.sample, "EventType");
   const detail = detailOf(v.sample);
@@ -187,8 +193,12 @@ function VerdictRow({ v, open, onToggle }: { v: Verdict; open: boolean; onToggle
         <StatusPill tone={SEVERITY_TONE[v.severity]}>{SEVERITY_LABEL[v.severity]}</StatusPill>
         <span className="osv-verdict-title">{image ?? kind ?? "Event"}</span>
         {image && kind && <span className="osv-verdict-kind">{kind}</span>}
-        {v.reviewReason === "close_call" && <StatusPill tone="warn">Close call</StatusPill>}
-        {v.reviewReason === "no_answer" && <StatusPill tone="bad">No answer</StatusPill>}
+        {v.expected
+          ? <StatusPill tone="neutral">Expected</StatusPill>
+          : <>
+              {v.reviewReason === "close_call" && <StatusPill tone="warn">Close call</StatusPill>}
+              {v.reviewReason === "no_answer" && <StatusPill tone="bad">No answer</StatusPill>}
+            </>}
       </div>
 
       {detail && <div className="osv-verdict-detail" title={detail}>{detail}</div>}
@@ -214,7 +224,18 @@ function VerdictRow({ v, open, onToggle }: { v: Verdict; open: boolean; onToggle
         <span>first seen {new Date(v.firstSeen).toLocaleString()}</span>
         <span>last seen {ago(v.lastSeen)}</span>
         {certainty !== null && <span title="The probability the model put on its answer. Not calibrated: use it to rank, not to measure.">certainty {pct(certainty)}</span>}
-        <button className="osv-link" onClick={onToggle} aria-expanded={open}>{open ? "Hide event" : "Show event"}</button>
+        {v.expected && <span>marked expected {ago(v.expected.at)}</span>}
+        <span className="osv-verdict-actions">
+          {(v.needsReview || v.expected) && (
+            <button className="osv-link" disabled={marking} onClick={() => onExpected(!v.expected)}
+                    title={v.expected
+                      ? "Put it back under Needs review."
+                      : "You know what this is and it is normal on this PC. It leaves Needs review; the model's verdict is kept, and a new model's verdict will be shown to you again."}>
+              {marking ? "Saving…" : v.expected ? "Undo expected" : "Mark as expected"}
+            </button>
+          )}
+          <button className="osv-link" onClick={onToggle} aria-expanded={open}>{open ? "Hide event" : "Show event"}</button>
+        </span>
       </div>
 
       {open && (
@@ -245,6 +266,7 @@ export default function Behaviour() {
   const [busy, setBusy] = useState<Busy>(null);
   const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [marking, setMarking] = useState<string | null>(null);
   const seen = useRef("");
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -285,6 +307,21 @@ export default function Behaviour() {
     try { await action(); }
     catch { setLink("offline"); setNotice({ tone: "warn", text: "Could not reach the OSAVA backend." }); }
     finally { setBusy(null); void refresh(); }
+  }
+
+  async function markExpected(v: Verdict, on: boolean) {
+    setMarking(v.signature);
+    try {
+      const r = await call<Verdict>("/verdicts/expected", "POST", { signature: v.signature, expected: on });
+      if (!r.ok) setNotice({ tone: "warn", text: r.body?.error ?? "That behaviour could not be changed." });
+    } catch {
+      setLink("offline");
+      setNotice({ tone: "warn", text: "Could not reach the OSAVA backend." });
+    } finally {
+      setMarking(null);
+      await loadVerdicts(viewRef.current);
+      void refresh();
+    }
   }
 
   const installSysmon = () => run("sysmon", async () => {
@@ -362,6 +399,7 @@ export default function Behaviour() {
   const liveDot = m?.phase === "off" && !status?.scanning ? "" : m?.error ? " osv-dot--warn" : " osv-dot--live";
 
   const reviewCount = status?.counts.needsReview ?? 0;
+  const expectedCount = status?.counts.expected ?? 0;
   const total = status?.behaviours ?? 0;
 
   return (
@@ -505,7 +543,8 @@ export default function Behaviour() {
 
           <div className="osv-kpis">
             <Kpi label="Behaviours judged" value={total} note="each judged once, then counted" />
-            <Kpi label="Need review" value={reviewCount} attn={reviewCount > 0} note="not benign, or too close to call" />
+            <Kpi label="Need review" value={reviewCount} attn={reviewCount > 0}
+                 note={status.counts.expected ? `not benign, or too close to call · ${status.counts.expected} marked expected` : "not benign, or too close to call"} />
             <Kpi label="Not assessed" value={status.outOfDomain} note="event types the model does not judge" />
             <Kpi label="Last scan" value={ago(m?.lastScanAt ?? null)} small
                  note={m?.lastScan ? `read ${m.lastScan.read} · new ${m.lastScan.classified}` : undefined} />
@@ -553,7 +592,7 @@ export default function Behaviour() {
                       ? "Nothing has been assessed yet. Start monitoring, or scan once."
                       : "Nothing has been assessed yet. Finish the setup above, then start monitoring.")
                 : view === "review"
-                  ? `Nothing needs review. ${total} behaviour${total === 1 ? "" : "s"} judged benign${monitoring ? "" : " — but monitoring is off, so nothing new is being looked at"}.`
+                  ? `Nothing needs review. ${total} behaviour${total === 1 ? "" : "s"}: ${expectedCount ? `${expectedCount} marked expected by you, the rest` : total === 1 ? "it was" : "all"} judged benign${monitoring ? "" : " — but monitoring is off, so nothing new is being looked at"}.`
                   : "No behaviours to show."}
             </div>
           )}
@@ -561,7 +600,8 @@ export default function Behaviour() {
           <div className="osv-verdicts">
             {verdicts.map((v) => (
               <VerdictRow key={v.signature} v={v} open={!!open[v.signature]}
-                          onToggle={() => setOpen((o) => ({ ...o, [v.signature]: !o[v.signature] }))} />
+                          onToggle={() => setOpen((o) => ({ ...o, [v.signature]: !o[v.signature] }))}
+                          marking={marking === v.signature} onExpected={(on) => void markExpected(v, on)} />
             ))}
           </div>
           {verdicts.length === 200 && <p className="osv-fine">Showing the 200 that matter most.</p>}
@@ -577,6 +617,7 @@ export default function Behaviour() {
             <li>A behaviour is judged the first time it is seen and counted afterwards. Who and where (user, IP address, port) are ignored when deciding whether two events are the same behaviour.</li>
             <li>Clear attacks and clearly normal activity are called far more reliably than the grey area between them. Treat None and Low as “nothing stood out”, not “safe”.</li>
             <li>If the model gives no usable answer, OSAVA escalates the event rather than calling it clean.</li>
+            <li>“Mark as expected” is your call, not the model's: the behaviour leaves Needs review and keeps its verdict. It lasts until a different model judges that behaviour; then it is shown to you again.</li>
             <li>Everything runs on this PC. Events and verdicts are kept in your profile under .osava and are never sent anywhere.</li>
           </ul>
         </details>

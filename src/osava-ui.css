@@ -467,7 +467,8 @@
   font-size: 11px;
   color: var(--osv-text-dim);
 }
-.osv-verdict-meta .osv-link { margin-left: auto; }
+.osv-verdict-actions { margin-left: auto; display: inline-flex; gap: 16px; }
+.osv-link:disabled { opacity: 0.5; cursor: default; }
 
 .osv-tag--neutral { background: rgba(202, 197, 202, 0.06); border-color: rgba(202, 197, 202, 0.2); }
 .osv-tag--warn { background: rgba(251, 146, 60, 0.08); border-color: rgba(251, 146, 60, 0.28); }

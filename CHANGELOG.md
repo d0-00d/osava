@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+Working on the false alarms v0.3 raised on a real machine. Measured on a benchmark of a working PC's own benign
+activity (osava-slm `build_fp_bench.py`): the v3 model calls 51% of the behaviours it was designed against
+High, and 26% of a held-back half it was not.
+
+### Added
+
+- **Mark as expected.** A person who knows what a flagged behaviour is can say it is normal on this PC. It leaves
+  *Needs review* and keeps the model's verdict (a High stays High, labelled *Expected*), and it can be undone. It
+  holds only for the verdict of the model that made it: once a different model judges the behaviour, it is shown
+  again. `POST /api/behaviour/verdicts/expected {signature, expected}`; `/status` counts them (`counts.expected`).
+  A scan and a mark never write over each other: every read-change-write of the state now goes through one queue
+  (`store.exclusive`), and a test shows the mark is lost without it.
+
+### Changed
+
+- **PowerShell's execution-policy probe is one behaviour.** PowerShell writes
+  `__PSScriptPolicyTest_<random>.<random>.ps1` (or `.psm1`) to Temp every time it starts; each random name used
+  to be a new behaviour, judged again. The signature now collapses the random part, in osava-slm's
+  `signature.py` too (parity: 8,767/8,767 real records still sign identically).
+- **"Temp path" means a temporary or staging folder.** The tag fired on any program under AppData or
+  ProgramData, so every per-user app (VS Code, Spotify, Claude) was tagged as running from a temp path. It now
+  fires on Temp, Downloads, Public and the like, and on a program sitting directly in ProgramData or AppData
+  rather than in a folder of its own; a DLL an app loads from its own install folder no longer counts. Ported
+  from osava-slm's `targets.py` (parity: 17,763/17,763 explanations identical).
+- **`-NoProfile` is not an execution-policy bypass.** It only skips the profile script; the
+  *exec policy bypass* tag now needs `-ExecutionPolicy Bypass`/`Unrestricted`.
+
+These change reasons and tags on verdicts made from now on; stored verdicts keep the words they were given.
+
 ## Alpha v0.3: Behaviour triage (2026-10-09)
 
 OSAVA now uses the SENTRI-Classifier v3 model end to end. The classifier backend landed earlier on this
