@@ -152,7 +152,8 @@
     "name": "osava-smollm",
     "gguf_sha256": "dc24b6b923ed4dc7b475f41f31a96a90a1cfa242241e35ea37de09ce10c11f52",
     "gguf_bytes": 1915305376,
-    "quantisation": "Q4_K_M"
+    "quantisation": "Q4_K_M",
+    "url": "https://huggingface.co/d0-0d/osava-smollm/resolve/2c46c125853c3d57ddaeb2160a98a94069d40106/osava-smollm-q4.gguf"
   },
   "canaries": [
     {

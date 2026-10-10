@@ -8,6 +8,10 @@ High, and 26% of a held-back half it was not.
 
 ### Added
 
+- **The model has a download address.** [d0-0d/osava-smollm](https://huggingface.co/d0-0d/osava-smollm) on Hugging Face (weights Apache-2.0),
+  pinned in `contract.json` to commit `2c46c125`, so a clean install fetches it with no manual step.
+  `verify-release -- --full` passes: it downloaded the 1.9 GB file with OSAVA's own downloader, resumed with
+  `Range`, and matched the SHA-256.
 - **Mark as expected.** A person who knows what a flagged behaviour is can say it is normal on this PC. It leaves
   *Needs review* and keeps the model's verdict (a High stays High, labelled *Expected*), and it can be undone. It
   holds only for the verdict of the model that made it: once a different model judges the behaviour, it is shown

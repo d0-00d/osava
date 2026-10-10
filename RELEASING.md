@@ -92,8 +92,9 @@ items about the launch, a second launch and closing or killing the app.
 - **The product name is `osava`, the same as v0.1's**, so installing v0.3 upgrades a v0.1 install in place.
 - **Code signing.** Installers are unsigned, so SmartScreen warns on first run. The README tells users how to
   check the SHA-256 and proceed.
-- **The model has no hosted address**, and the weights' licence is undecided. `verify-release` fails until both
-  are settled.
+- **The model is hosted on Hugging Face**, [d0-0d/osava-smollm](https://huggingface.co/d0-0d/osava-smollm) (weights Apache-2.0), and `contract.json`
+  pins the download to one commit (`2c46c125`). A new model is a new commit there; regenerate the contract with
+  osava-slm's `export_contract.py --model-url <that commit's resolve URL>` and run `verify-release -- --full`.
 - **osava-slm has no LICENSE file.** OSAVA itself is MIT (`LICENSE`). Until the model's repository has a licence
   too, nobody else may legally use or redistribute that code or the weights it trains.
 - **No auto-update.** A new version is a new installer.
