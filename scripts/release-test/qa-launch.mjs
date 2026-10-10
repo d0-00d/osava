@@ -7,6 +7,8 @@
 import { Page, sleep } from "./cdp.mjs";
 
 const CDP = "http://127.0.0.1:9223";
+// The splash's launch button: `.splash-launch` now, `.splash-btn` in the version before the pixel handoff.
+const LAUNCH = ".splash-launch, .splash-btn";
 const t0 = Date.now();
 const at = () => ((Date.now() - t0) / 1000).toFixed(1).padStart(5) + "s";
 
@@ -33,9 +35,9 @@ const nav = () => page.eval(`[...document.querySelectorAll('.nav-item')].map(b =
 const api = (p) => page.eval(`fetch('http://localhost:4000${p}').then(r => r.json())`);
 const content = () => page.eval(`document.querySelector('.content')?.innerText ?? ''`);
 
-await page.waitFor(`!!document.querySelector('.splash-btn')`, "the splash button", 40000);
+await page.waitFor(`!!document.querySelector('${LAUNCH}')`, "the splash's launch button", 40000);
 console.log(at(), "splash finished");
-await page.click(`document.querySelector('.splash-btn')`);
+await page.click(`document.querySelector('${LAUNCH}')`);
 await page.waitFor(`!!document.querySelector('.sidebar')`, "the app shell", 30000);
 
 // From Launch until System Health has its answer it must never say that nothing is installed. The first
@@ -50,7 +52,7 @@ const watcher = (async () => {
 })();
 const [inst, hist, sys] = await Promise.all([api("/api/install-status"), api("/api/av/history"), api("/api/system-status")]);
 const mayClaimNone = sys.antivirus.length === 0 || sys.firewall.length === 0;   // then "none detected" would be true
-await page.waitFor(`!document.querySelector('.pixel-transition')`, "the transition to finish", 20000);
+await page.waitFor(`!document.querySelector('.splash')`, "the handoff to finish", 20000);
 await page.waitFor(`!document.body.innerText.includes('Checking protection status')`, "System Health to load", 25000);
 await sleep(1500);
 watching = false; await watcher;
@@ -61,8 +63,9 @@ check("the sidebar has every tab this PC has data for", JSON.stringify(got) === 
 check("System Health never claimed that nothing is installed", mayClaimNone || !claimedNone, mayClaimNone ? "this PC reports none, so that claim is allowed" : "");
 
 // Judge the page itself, not wherever the tab happens to be (a person may have clicked around in the window).
+// The visible title: the AV Console stays mounted, hidden, and has a title of its own.
 await page.openTab("System Health");
-await page.waitFor(`document.querySelector('.osv-title')?.textContent === 'System Health' && !document.body.innerText.includes('Checking protection status')`, "System Health to load", 25000);
+await page.waitFor(`[...document.querySelectorAll('.osv-title')].find((e) => e.offsetParent !== null)?.textContent === 'System Health' && !document.body.innerText.includes('Checking protection status')`, "System Health to load", 25000);
 const shown = await content();
 const missing = sys.antivirus.map((a) => a.displayName).filter((n) => !shown.includes(n));
 check("System Health shows the antivirus products Security Center reports", missing.length === 0, missing.length ? `missing: ${missing.join(", ")}` : sys.antivirus.map((a) => a.displayName).join(", ") || "none registered");
