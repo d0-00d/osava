@@ -138,6 +138,11 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 - **Medium is the weakest call.** Clear attacks and clearly normal activity are told apart far more reliably
   than the grey area between them. Verdicts are per event, with no memory of earlier ones, and a behaviour is
   decided the first time it is seen.
+- **Some ordinary logons are close calls.** On the development PC, service logons (type 5) and unlocks (type 7)
+  were judged benign but by a narrow margin (0.18 and 0.09), so they appear under *Needs review*. Type 7 is one of
+  the logon kinds the model saw only in evaluation, not in training.
+- **System Health cannot tell "none" from "could not ask".** If its query to Windows Security Center fails, it
+  says "No antivirus product detected" rather than that it could not find out.
 - **Reading the live Sysmon log needs a sign-out and back in** after OSAVA adds the account to *Event Log
   Readers* (Windows applies a new membership at sign-in). Until then, a backend started elevated can read it.
 - **Not tested on a clean PC.** The installers (`.msi` / `.exe`, built with `npm run tauri build` on Windows) were
@@ -183,7 +188,16 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
   the 4625 becomes a "Failed Logon" body. The pipeline's handling (separate bookmarks, logons first under a shared
   budget, an unreadable Security log reported without stopping Sysmon, any other failure failing the scan, an old
   state file loading) is covered by unit tests, each checked by reintroducing its bug.
-- *Not exercised:* a live Sysmon feed. The account used for development is not yet in *Event Log Readers*, so
-  the live log could only be tested for its failure path (`LOG_ACCESS_DENIED`) and through exported logs. Nor a
-  Windows that has never seen OSAVA, or one without the Visual C++ runtime (that failure was run for real by
-  removing a DLL from the server's folder: refused in 1.1 s with the right message).
+- **Live logons on the development PC, nothing mocked.** The real reader, pipeline and model on this PC's own
+  Security log (into a scratch state file): 3,382 logons drained in 7 scans in 37 s with the model on the GPU, in
+  order, a full page always reported as more, the Sysmon bookmark untouched. They are 7 behaviours: benign apart
+  from failed NTLM network logons (low), with the two close calls above.
+- **The merged build.** Built from the merge of this branch into master (the pixel-handoff frontend), the
+  installed-app checks pass: every tab at launch, System Health showing the real antivirus, one window after a
+  second launch, nothing left after closing, the backend gone 1.5 s after a kill. In headless Edge with the backend
+  started three seconds after the page, the tabs, the logon rows, and the "logons are not being assessed" notice
+  are right, with and without WebGL.
+- *Not exercised:* a Windows that has never seen OSAVA, or one without the Visual C++ runtime (that failure was
+  run for real by removing a DLL from the server's folder: refused in 1.1 s with the right message). The live
+  Sysmon log is now readable by the development account and monitoring has run on it, but the checks recorded
+  here used exported logs for Sysmon.
