@@ -23,6 +23,8 @@ const SUBS: [RegExp, string][] = [
   [/[A-Za-z0-9+/]{40,}={0,2}/g, "<B64>"],
   [/\b[a-fA-F0-9]{16,}\b/g, "<HEX>"],
   [/\b[a-z0-9]{8}\.(tmp|dat|log|bin)\b/gi, "<RANDFILE>"],
+  // PowerShell's execution-policy probe: a fresh random name every time it starts.
+  [/(?<=__PSScriptPolicyTest_)[a-z0-9]{8}\.[a-z0-9]{3}(?=\.psm?1\b)/gi, "<RAND>"],
   [/\\pipe\\[^\s"]+/gi, "\\pipe\\<PIPE>"],
   [/\b\d{3,}\b/g, "<N>"],
 ];

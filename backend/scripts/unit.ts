@@ -22,6 +22,7 @@ import { PAGE, scanOnce, type ScanSummary, type Source } from "../src/services/b
 import { LogAccessDenied, LogMissing, SCRIPT, SECURITY_EVENT_IDS, SECURITY_LOG, SYSMON_LOG, type LogRecord } from "../src/services/behaviour/reader";
 import { ModelUnavailable } from "../src/services/behaviour/runtime";
 import { readState, writeState } from "../src/services/behaviour/store";
+import { parseBody, signature } from "../src/services/behaviour/signature";
 import { ALLOWED_ORIGINS, localOnly } from "../src/routes/localOnly";
 import { download, DownloadError } from "../src/services/behaviour/download";
 import { cancelInstall, installDone, installState, startInstall } from "../src/services/behaviour/installer";
@@ -431,6 +432,19 @@ test("a scan skips OSAVA's own PowerShell and its policy-test file, counts them,
   assert.equal(calls.length, 1);
   assert.ok(!calls[0]!.includes("PSScriptPolicyTest") && !calls[0]!.includes("Get-WinEvent"), "the model never saw them");
   assert.equal(Object.keys((await readState()).verdicts).length, 1);
+});
+
+// ── signatures ─────────────────────────────────────────────────────────────
+
+test("PowerShell's policy-test files are one behaviour, whatever random name each start gives them", () => {
+  const file = (name: string) => signature(parseBody(
+    `EventID: 11\nEventType: File Create\nImage: ${PS}\nUser: CORP\\alice\nTargetFilename: C:\\Users\\alice\\AppData\\Local\\Temp\\${name}`));
+  const a = file("__PSScriptPolicyTest_oq45noi3.ipe.ps1");
+  assert.equal(file("__PSScriptPolicyTest_atkbm2b4.2ro.ps1"), a);
+  assert.equal(file("__PSSCRIPTPOLICYTEST_X1Y2Z3W4.405.ps1"), a, "case, and an all-digit middle part, do not matter");
+  assert.ok(a.endsWith("__psscriptpolicytest_<rand>.ps1"), a);
+  assert.ok(file("__PSScriptPolicyTest_oq45noi3.ipe.psm1").endsWith("<rand>.psm1"), "the module variant is its own behaviour");
+  assert.notEqual(file("oq45noi3.ipe.ps1"), file("atkbm2b4.2ro.ps1"), "any other script in Temp keeps its name");
 });
 
 // ── monitor ────────────────────────────────────────────────────────────────

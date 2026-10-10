@@ -56,10 +56,12 @@ const SYSTEM_NAMES = ["svchost.exe", "lsass.exe", "services.exe", "csrss.exe",
 const SYSTEM_DIRS = ["c:\\windows\\system32", "c:\\windows\\syswow64",
   "c:\\program files", "c:\\program files (x86)",
   "c:\\windows\\winsxs", "c:\\windows\\microsoft.net"];
-const TEMP_DIRS = ["\\appdata\\local\\temp", "\\appdata\\roaming", "\\appdata\\local",
-  "c:\\windows\\temp", "c:\\programdata", "c:\\temp", "c:\\users\\public",
+// Where a program is staged, not installed.
+const TEMP_DIRS = ["\\appdata\\local\\temp", "c:\\windows\\temp", "c:\\temp", "c:\\users\\public",
   "\\downloads", "c:\\perflogs", "c:\\windows\\tasks",
   "c:\\windows\\debug", "c:\\windows\\tracing"];
+// Writable too, but where software is installed: running from here says nothing on its own.
+const APP_DIRS = ["\\appdata\\roaming", "\\appdata\\local", "c:\\programdata"];
 
 const EXPECTED: Record<string, Set<string>> = {
   "explorer.exe": new Set(["cmd.exe", "powershell.exe", "notepad.exe", "chrome.exe",
@@ -104,7 +106,7 @@ const HOME_DIR: Record<string, string> = { "explorer.exe": "c:\\windows", "psexe
 const MASQ_NAMES = new Set([...SYSTEM_NAMES, ...AUTO_ELEVATE, ...ACCESSIBILITY]);
 const PAYLOAD_EXT = [".exe", ".dll", ".scr", ".hta", ".js", ".jse", ".vbs", ".vbe", ".ps1",
   ".bat", ".cmd", ".sct", ".wsf", ".msi"];
-const WRITABLE = [...TEMP_DIRS, "\\desktop\\", "\\start menu\\"];
+const WRITABLE = [...TEMP_DIRS, ...APP_DIRS, "\\desktop\\", "\\start menu\\"];
 
 // ---------------------------------------------------------------- regexes
 //
@@ -140,7 +142,11 @@ const r = String.raw;
 const RE_HIDDEN = py(r`(-w(?:indow)?s?(?:tyle)?\s+h(?:idden)?\b|createnowindow|\bwindowstyle\s*=\s*hidden|\bconhost(?:\.exe)?\b[^\n]*--headless)`);
 const RE_ENCODED = py(r`(-e(?:nc|ncoded)?(?:command)?\s+[A-Za-z0-9+/=]{16,}|frombase64string|\[convert\]::|-enc\b|-encodedcommand\b)`);
 const RE_CRADLE = py(r`(invoke-webrequest|invoke-restmethod|\biwr\b|\bcurl\b|\bwget\b|downloadstring|downloadfile|downloaddata|net\.webclient|start-bitstransfer|bitsadmin[^|]*?/transfer|certutil[^|]*?-urlcache|\bhttps?://)`);
-const RE_BYPASS = py(r`(-ex(?:ec)?(?:utionpolicy)?\s+(bypass|unrestricted)|-nop\b|-noprofile\b)`);
+// -NoProfile only skips the profile script; it is not a policy bypass.
+const RE_BYPASS = py(r`-ex(?:ec)?(?:utionpolicy)?\s+(bypass|unrestricted)`);
+// The bare roots of APP_DIRS are staging, not installs: software installs into a folder of its own, so a program
+// directly in ProgramData or AppData\Roaming was dropped there.
+const RE_STAGING_ROOT = py(r`(^c:\\programdata|\\appdata\\(?:roaming|local))$`);
 const RE_DISCOVERY = py(r`\b(whoami|systeminfo|nltest|net\s+(user|group|localgroup|view|share|accounts)|net1\s+(user|group)|ipconfig|arp\s+-a|nbtstat|quser|qwinsta|dsquery|tasklist|hostname|netstat|route\s+print|wmic(?:\.exe)?\s+(computersystem|os|process|qfe|useraccount))\b`);
 const RE_CRED = py(r`(sekurlsa|logonpasswords|lsass\.dmp|mimikatz|ntds\.dit|\bsam\b\s+save|reg\s+save\s+hk\w*\\+(sam|security|system)|comsvcs\.dll[^|]*?minidump|vaultcmd|dpapi|ntdsutil[^|]*?\bifm\b|procdump[^|]*?lsass|\bsam\b[^|]*?\bsave\b)`);
 const RE_ADMIN_SHARE = py(r`\\\\[^\\]+\\(admin\$|ipc\$|c\$)`);
@@ -231,6 +237,8 @@ const dir = (p: string | undefined) => {
   return q.includes("\\") ? lower(q.slice(0, q.lastIndexOf("\\"))) : "";
 };
 const within = (d: string, prefixes: string[]) => prefixes.some((x) => d.includes(x));
+/** a lowercased directory that programs are staged in rather than installed in */
+const staged = (d: string) => within(d, TEMP_DIRS) || RE_STAGING_ROOT.test(d);
 const pyStr = (v: unknown) => (v === null || v === undefined ? "None" : String(v));
 
 function clip(v: unknown, n = 120): string {
@@ -314,7 +322,7 @@ export function extract(f: Fields): Record<string, string> {
 
   // the process itself
   if (img) {
-    if (within(idir, TEMP_DIRS)) flag("temp_path_exec", img.includes("\\") ? img.slice(0, img.lastIndexOf("\\")) : img);
+    if (staged(idir)) flag("temp_path_exec", img.includes("\\") ? img.slice(0, img.lastIndexOf("\\")) : img);
     if (ibc !== ib || (MASQ_NAMES.has(ibc) && !atHome(ibc, idir))) flag("masquerading_name", img);
     if (LOLBINS.has(ib)) flag("lolbin_exec", ib);
     if (ib === "sdbinst.exe") flag("app_shim_install", span(RE_SDB, cmd) || img);
@@ -350,8 +358,9 @@ export function extract(f: Fields): Record<string, string> {
     if (RE_REG_CRED.test(t)) flag("credential_access", tgt);
   }
 
-  // image loads from a user-writable path
-  if (eid === "7" && t && within(t, WRITABLE)) flag("temp_path_exec", tgt);
+  // image loads from a user-writable path; a program installed under AppData or ProgramData loading its own DLLs is just running
+  if (eid === "7" && t && (staged(dir(t)) || (within(t, WRITABLE)
+      && !(within(t, APP_DIRS) && idir && t.startsWith(idir + "\\"))))) flag("temp_path_exec", tgt);
 
   // file writes
   if (eid === "11" && t) {
@@ -432,7 +441,7 @@ const PHRASE: Record<string, string> = {
   service_host_spawns_proc: "a service host spawned an unexpected child",
   system_context_exec: "it runs in SYSTEM context",
   lolbin_exec: "the image is a living-off-the-land binary",
-  temp_path_exec: "the image runs from a user-writable path",
+  temp_path_exec: "the image runs from a temporary or staging folder, not an install folder",
   unsigned_binary: "the binary is unsigned",
   signature_invalid: "the signature failed validation",
   masquerading_name: "the filename mimics a system binary outside a system path",
