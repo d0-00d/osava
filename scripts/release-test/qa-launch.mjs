@@ -26,7 +26,9 @@ const failed = [], hosts = new Map();
 page.ws.addEventListener("message", (m) => {
   const d = JSON.parse(m.data);
   if (d.method === "Network.requestWillBeSent") { try { const h = new URL(d.params.request.url).host; hosts.set(h, (hosts.get(h) ?? 0) + 1); } catch { /* data: URLs */ } }
-  if (d.method === "Network.loadingFailed") failed.push(`${page.requests.get(d.params.requestId)?.url ?? d.params.requestId} ${d.params.errorText}`);
+  if (d.method === "Network.loadingFailed") failed.push({
+    url: page.requests.get(d.params.requestId)?.url ?? null, id: d.params.requestId,
+    error: d.params.errorText, type: d.params.type ?? "?", canceled: !!d.params.canceled });
 });
 
 const results = [];
@@ -71,10 +73,20 @@ const missing = sys.antivirus.map((a) => a.displayName).filter((n) => !shown.inc
 check("System Health shows the antivirus products Security Center reports", missing.length === 0, missing.length ? `missing: ${missing.join(", ")}` : sys.antivirus.map((a) => a.displayName).join(", ") || "none registered");
 
 // The splash closes its own boot-log stream (an EventSource) when the stream says it is done, and the server ends
-// the response at the same moment. Whenever the close wins that race the browser reports the stream as aborted.
-// That is by design (without the close, EventSource would reconnect); anything else failing is a real failure.
-const realFailures = failed.filter((f) => !/\/api\/boot net::ERR_ABORTED$/.test(f));
-check("no request failed", realFailures.length === 0, realFailures.join("; "));
+// the response at the same moment, so the browser reports the stream as aborted. That is by design (without the
+// close, EventSource would reconnect); anything else failing is a real failure. If we attached after the stream
+// began, the browser knows neither its URL nor its type (it says "Other"): it is then the one request the page
+// itself cancelled that we never saw start, while /api/boot never appeared either.
+const bootSeen = [...page.requests.values()].some((r) => /\/api\/boot$/.test(r.url ?? ""));
+let unseenBootLeft = !bootSeen;
+const realFailures = failed.filter((f) => {
+  if (f.error !== "net::ERR_ABORTED") return true;
+  if (/\/api\/boot$/.test(f.url ?? "") || f.type === "EventSource") return false;
+  if (f.url === null && f.canceled && unseenBootLeft) { unseenBootLeft = false; return false; }
+  return true;
+});
+check("no request failed", realFailures.length === 0,
+  realFailures.map((f) => `${f.url ?? f.id} ${f.error} [${f.type}]${f.canceled ? " (cancelled by the page)" : ""}`).join("; "));
 check("no console errors", page.console.length === 0, page.console.join(" || "));
 check("the window talks to nothing but itself and the backend", [...hosts.keys()].every((h) => h === "tauri.localhost" || h === "localhost:4000"), JSON.stringify([...hosts]));
 if (process.argv[2]) await page.shot(process.argv[2], "launch");

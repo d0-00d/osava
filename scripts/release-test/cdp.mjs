@@ -31,7 +31,8 @@ export class Page {
         this.requests.set(d.params.requestId, { ...r, url: d.params.response.url, status: d.params.response.status });
       } else if (d.method === "Network.loadingFailed") {
         const r = this.requests.get(d.params.requestId);
-        this.failures.push(`${r?.url ?? d.params.requestId} ${d.params.errorText}${d.params.blockedReason ? " (" + d.params.blockedReason + ")" : ""}`);
+        // The resource type names a failure even when it began before we attached and its URL is unknown.
+        this.failures.push(`${r?.url ?? d.params.requestId} ${d.params.errorText}${d.params.blockedReason ? " (" + d.params.blockedReason + ")" : ""} [${d.params.type ?? "?"}]`);
       }
     };
   }
