@@ -6,13 +6,20 @@
 // the prompt string, and the model checksum live there. Do not edit it by
 // hand; regenerate it, because a converter or prompt that differs from
 // training in any detail feeds the model a distribution it never learned.
+//
+// Why this file is not called contract.ts: contract.json must keep its name
+// (osava-slm documents copying it to exactly that path), and a module that
+// shares its basename makes `require("./contract")` resolve to the .json first
+// under ts-node, so CONTRACT arrives undefined. tsc, esbuild and pkg all prefer
+// the .ts, so type-checking, the bundle and every test pass; only
+// `npm run dev` (ts-node-dev) crashes. A unit test now refuses any such pair.
 // ─────────────────────────────────────────────────────────────
 
 import contractJson from "./contract.json";
 
 export interface Contract {
   schema_version: string;
-  model: { name?: string; gguf_sha256?: string; gguf_bytes?: number; quantisation?: string };
+  model: { name?: string; gguf_sha256?: string; gguf_bytes?: number; quantisation?: string; url?: string };
   input: {
     field_order: string[];
     max_cmdline: number;

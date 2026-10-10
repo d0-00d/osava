@@ -1,6 +1,6 @@
 export type Severity = "none" | "low" | "medium" | "high" | "critical";
 
-/** The model's output after parsing — before the guard touches it. */
+/** A verdict: severity from the model, the rest computed from the event (explain.ts). */
 export interface Classification {
   severity: Severity;
   isThreat: boolean;
@@ -17,8 +17,7 @@ export interface Verdict extends Classification {
   /** top class probability minus the runner-up; low = the model is unsure */
   margin: number;
   needsReview: boolean;
-  guard: import("./guard").GuardReport;
-  /** true when the model's output could not be parsed and we failed open */
+  /** true when the model gave no usable severity and the verdict failed open (medium) */
   failedOpen: boolean;
   modelSha256: string | undefined;
 }

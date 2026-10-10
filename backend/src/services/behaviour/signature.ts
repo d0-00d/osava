@@ -62,7 +62,7 @@ const WELL_KNOWN = new Set([80, 443, 53, 88, 123, 135, 139, 389, 445, 636, 3268,
 const SUSPECT_PORTS = new Set([4444, 1337, 8080, 8443, 9001, 1234, 31337, 6666, 6667, 8888]);
 
 /** Python int() accepts surrounding whitespace, a sign, and _ separators. */
-function pyInt(p: unknown): number | null {
+export function pyInt(p: unknown): number | null {
   const s = String(p ?? "").trim();
   return /^[+-]?\d+(_\d+)*$/.test(s) ? Number(s.split("_").join("")) : null;
 }
@@ -99,7 +99,8 @@ export function parseBody(body: string): Record<string, string> {
   const fields: Record<string, string> = {};
   let last: string | null = null;
   for (const line of body.split("\n")) {
-    const m = /^([A-Za-z][A-Za-z0-9_]*): ?(.*)$/.exec(line);
+    // [^\n] not `.`: Python's `.` also matches \r, JavaScript's does not
+    const m = /^([A-Za-z][A-Za-z0-9_]*): ?([^\n]*)$/.exec(line);
     if (m) { last = m[1]!; fields[last] = m[2]!; }
     else if (last !== null) fields[last] += "\n" + line;
   }

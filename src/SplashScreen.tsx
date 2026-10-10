@@ -216,8 +216,10 @@ export default function SplashScreen({
         await new Promise((res) => setTimeout(res, 500));
       }
 
-      addLine("> Could not reach backend after 15s", "warn");
-      addLine("  Start the backend with: cd backend && npm run dev", "warn");
+      addLine("> Could not reach the OSAVA backend after 15s", "warn");
+      addLine("  Another program may be using port 4000. Close it, then start OSAVA again.", "warn");
+      addLine("  What the backend reported: %USERPROFILE%\\.osava\\backend.log", "warn");
+      addLine("  (Developing? Start it with: cd backend && npm run dev)", "log");
       if (!cancelled) {
         setFailed(true);
         setAllDone(true);

@@ -7,7 +7,7 @@
 //     Python includes \x1c-\x1f and \x85; JS includes ﻿
 // ASCII-only input never hits any of this. Real telemetry sometimes does.
 
-const PY_WS = "\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0  -     　";
+export const PY_WS = "\t\n\x0b\x0c\r\x1c\x1d\x1e\x1f \x85\xa0  -     　";
 const STRIP = new RegExp(`^[${PY_WS}]+|[${PY_WS}]+$`, "g");
 const SPLIT = new RegExp(`[${PY_WS}]+`);
 

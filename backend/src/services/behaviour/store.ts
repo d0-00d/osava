@@ -6,11 +6,12 @@ import os from "node:os";
 import fs from "node:fs/promises";
 import type { Verdict } from "./types";
 
-const FILE = path.join(os.homedir(), ".osava", "behaviour.json");
+// OSAVA_STATE_FILE exists so tests and screenshots never touch the real state.
+const FILE = process.env["OSAVA_STATE_FILE"] ?? path.join(os.homedir(), ".osava", "behaviour.json");
 
 export interface BehaviourRecord extends Verdict {
   signature: string;
-  /** the first event seen with this behaviour, as the model saw it */
+  /** the event the model judged for this behaviour, exactly as it saw it */
   sample: string;
   firstSeen: string;
   lastSeen: string;

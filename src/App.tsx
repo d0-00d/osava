@@ -4,6 +4,7 @@ import SecurityHub from "./SecurityHub";
 import AvConsole from "./AvConsole";
 import ScanHistory from "./ScanHistory";
 import Threats from "./Threats";
+import Behaviour from "./Behaviour";
 import SplashScreen from "./SplashScreen";
 import PixelHandoff from "./PixelHandoff";
 import PixelFlowBackground from "./PixelFlowBackground";
@@ -12,7 +13,7 @@ import type { PixelFlowHandle } from "./pixelFlow";
 import "./App.css";
 import "./osava-ui.css";
 
-type Tab = "dashboard" | "hub" | "console" | "threats" | "history";
+type Tab = "dashboard" | "hub" | "console" | "behaviour" | "threats" | "history";
 
 type InstallStatus = {
   installed: boolean;
@@ -25,6 +26,7 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "System Health" },
   { id: "hub", label: "Security Hub" },
   { id: "console", label: "AV Console" },
+  { id: "behaviour", label: "Behaviour" },
   { id: "threats", label: "Threats" },
   { id: "history", label: "Scan History" },
 ];
@@ -65,8 +67,15 @@ function App() {
     }
   }
 
-  useEffect(() => { fetchInstallStatus(); }, []);
-  useEffect(() => { checkHistory(); }, []);
+  // The packaged app starts its backend with the window, and the page loads first. A request made
+  // as the page mounts is refused and never repeated, which left the AV Console, Threats and Scan
+  // History tabs out of the sidebar (and the threat alert off the backdrop) for the whole session.
+  // The splash is what waits for the backend, so ask once it has found it.
+  useEffect(() => {
+    if (!transitioning) return;
+    fetchInstallStatus();
+    checkHistory();
+  }, [transitioning]);
 
   const visibleTabs = NAV_ITEMS.filter(item => {
     if (item.id === "console") return installStatus?.installed;
@@ -109,6 +118,7 @@ function App() {
         <div hidden={activeTab !== "console"}>
         <AvConsole onScanComplete={checkHistory} />
         </div>
+        {activeTab === "behaviour" && <Behaviour />}
         {activeTab === "threats" && <Threats />}
         {activeTab === "history" && <ScanHistory />}
       </main>

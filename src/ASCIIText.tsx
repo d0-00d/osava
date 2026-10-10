@@ -456,8 +456,6 @@ export default function ASCIIText({
       }}
     >
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&display=swap');
-
         .ascii-text-container canvas {
           position: absolute;
           left: 0;
