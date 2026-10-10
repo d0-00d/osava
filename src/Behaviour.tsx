@@ -35,7 +35,7 @@ type Verdict = {
 };
 
 type ScanSummary = {
-  read: number; outOfDomain: number; known: number; classified: number;
+  read: number; own?: number; outOfDomain: number; known: number; classified: number;
   deferred: boolean; more: boolean; bookmark: number;
   securityBookmark?: number;
   /** logons were not assessed: the Security log refused this account */
@@ -314,7 +314,9 @@ export default function Behaviour() {
     setNotice({
       tone: "ok",
       text: `Read ${s.read} events: ${s.classified} new behaviour${s.classified === 1 ? "" : "s"} judged, ` +
-        `${s.known} already known, ${s.outOfDomain} not assessed.${s.more ? " More is waiting; scan again to continue." : ""}` +
+        `${s.known} already known, ${s.outOfDomain} not assessed` +
+        (s.own ? `, ${s.own} OSAVA's own (not judged)` : "") +
+        `.${s.more ? " More is waiting; scan again to continue." : ""}` +
         (s.securityUnreadable ? " Logons were not assessed: this account cannot read the Security log." : ""),
     });
   });
@@ -513,7 +515,8 @@ export default function Behaviour() {
             <b>Judges</b> Sysmon {coverage(status.supportedEventIds)} events
             {status.supportedEventIds.some((i) => i >= 1000) &&
               <>, and logons ({status.supportedEventIds.filter((i) => i >= 1000).join(", ")}) from the Security log</>}.{" "}
-            <b>Everything else</b> is counted under “Not assessed” — it is not treated as clean.
+            <b>Everything else</b> is counted under “Not assessed” — it is not treated as clean.{" "}
+            <b>OSAVA's own work</b> (its log readers and the model server) is skipped, not judged.
           </p>
           <p className="osv-fine" style={{ marginTop: 6 }}>
             Model {status.model.name ?? "osava-smollm"} · {status.model.quantisation} ·{" "}

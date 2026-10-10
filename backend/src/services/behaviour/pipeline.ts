@@ -6,6 +6,7 @@
 import { CONTRACT } from "./contractSpec";
 import { classify } from "./classifier";
 import { toContractBody } from "./convert";
+import { ownTracker } from "./own";
 import { LogAccessDenied, readSecurity, readSysmon, type LogRecord } from "./reader";
 import { baseUrl, currentApiKey } from "./runtime";
 import { parseBody, signature } from "./signature";
@@ -16,6 +17,8 @@ export const PAGE = 500;
 
 export interface ScanSummary {
   read: number;
+  /** OSAVA's own activity (its log readers, llama-server, what they write): skipped, never judged */
+  own: number;
   outOfDomain: number;
   known: number;
   classified: number;
@@ -65,7 +68,7 @@ export function scanOnce(maxNew = 25, sources: Sources | Source = LIVE): Promise
 async function run(maxNew: number, src: Sources): Promise<ScanSummary> {
   const st = await readState();
   const sum: ScanSummary = {
-    read: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false,
+    read: 0, own: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false,
     bookmark: st.bookmark, securityBookmark: st.securityBookmark ?? 0, securityUnreadable: false,
   };
   const model = CONTRACT.model.gguf_sha256;
@@ -79,6 +82,13 @@ async function run(maxNew: number, src: Sources): Promise<ScanSummary> {
    */
   async function drain(recs: LogRecord[], setBookmark: (recordId: number) => void): Promise<boolean> {
     for (const r of recs) {
+      // Before anything else, so OSAVA's own work is neither judged nor counted as anything but its own.
+      if (ownTracker.claims(r)) {
+        sum.own++;
+        setBookmark(r.recordId);
+        dirty = true;
+        continue;
+      }
       const body = toContractBody(r);
       if (body === null) {
         if (!CONTRACT.input.supported_event_ids.includes(r.eid)) sum.outOfDomain++;

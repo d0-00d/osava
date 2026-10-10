@@ -65,6 +65,13 @@ branch; v0.3 adds the part a person can use, and fixes what running it against t
 
 ### Fixed (each found by running the real thing)
 
+- **OSAVA judged itself.** On a real PC its own PowerShell log reader came out "High: execution policy bypassed",
+  and every PowerShell start writes a `__PSScriptPolicyTest_<random>.ps1` that never matched an earlier one, so
+  each became a new behaviour, judged afresh (High, Medium and Low for the same harmless file). Events caused by
+  the backend, the processes it starts (PowerShell, llama-server, a shell) and theirs are now skipped before the
+  model and counted. They are recognised by lineage in the log: a ProcessGuid, never reused, for each process
+  whose parent is this backend (its pid and its executable together, so a recycled pid is not enough; in the
+  packaged app its path alone, so a previous run's leftovers count too).
 - **The installed app hid the AV Console, Threats and Scan History tabs, and System Health first said "No
   antivirus product detected" and "No firewall product detected".** The window and its backend start together
   and the page loads first; within 100 ms it asked for the install status, the scan history and the system status,

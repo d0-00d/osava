@@ -29,6 +29,7 @@ import { LLM_DIR, MODEL_PATH, installModel, missingVcRuntime, modelVerified, vcR
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { pidAlive, watchParent } from "../src/parentWatch";
+import { createOwnTracker } from "../src/services/behaviour/own";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(cond: () => boolean, ms = 2000): Promise<void> {
@@ -357,11 +358,86 @@ test("the log query filters logons in the query, reads oldest first, and leaves 
   assert.match(SCRIPT("C:\\caps\\o'brien.evtx", 0, 10, SECURITY_EVENT_IDS), /-Path 'C:\\caps\\o''brien\.evtx'/);
 });
 
+
+// ── OSAVA's own activity is not judged ─────────────────────────────────────
+
+const NODE = "C:\\node.exe";
+const proc = (id: number, guid: string, parentPid: number, parentImage: string, image: string, parentGuid = "{00000000-0000-0000-0000-000000000000}") =>
+  rec(id, 1, { ProcessGuid: guid, ProcessId: String(4000 + id), Image: image, CommandLine: image,
+    ParentProcessGuid: parentGuid, ParentProcessId: String(parentPid), ParentImage: parentImage, User: "CORP\\alice" });
+const fileBy = (id: number, guid: string, image: string, target: string) =>
+  rec(id, 11, { ProcessGuid: guid, ProcessId: "1", Image: image, TargetFilename: target });
+const PS = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+const POLICY = "C:\\Users\\alice\\AppData\\Local\\Temp\\__PSScriptPolicyTest_oq45noi3.ipe.ps1";
+
+test("own activity: a child of the backend, and what it writes, are OSAVA's; a stranger's are not", () => {
+  const t = createOwnTracker({ pid: 5000, exe: NODE, packaged: false });
+  assert.equal(t.claims(proc(1, "{AAAA0001-0000-0000-0000-000000000001}", 5000, NODE, PS)), true);
+  assert.equal(t.claims(fileBy(2, "{aaaa0001-0000-0000-0000-000000000001}", PS, POLICY)), true, "braces and case do not matter");
+  assert.equal(t.claims(fileBy(3, "{BBBB0002-0000-0000-0000-000000000002}", PS, POLICY)), false, "the same file by someone else's PowerShell is judged");
+});
+
+test("own activity: a recycled pid is not enough; the parent must also be our executable", () => {
+  const t = createOwnTracker({ pid: 5000, exe: NODE, packaged: false });
+  assert.equal(t.claims(proc(1, "{CCCC0003-0000-0000-0000-000000000003}", 5000, "C:\\Windows\\explorer.exe", PS)), false);
+  assert.equal(t.claims(fileBy(2, "{CCCC0003-0000-0000-0000-000000000003}", PS, POLICY)), false, "and it was not remembered");
+  assert.equal(t.claims(proc(3, "{CCCC0004-0000-0000-0000-000000000004}", 5001, NODE, PS)), false, "another node process is not us");
+});
+
+test("own activity: a grandchild (PowerShell started through a shell) is OSAVA's too", () => {
+  const t = createOwnTracker({ pid: 5000, exe: NODE, packaged: false });
+  const cmd = "{DDDD0005-0000-0000-0000-000000000005}", ps = "{DDDD0006-0000-0000-0000-000000000006}";
+  assert.equal(t.claims(proc(1, cmd, 5000, NODE, "C:\\Windows\\System32\\cmd.exe")), true);
+  assert.equal(t.claims(proc(2, ps, 4001, "C:\\Windows\\System32\\cmd.exe", PS, cmd)), true);
+  assert.equal(t.claims(fileBy(3, ps, PS, POLICY)), true);
+});
+
+test("own activity: the packaged backend is known by its path, so a previous run's leftovers are recognised", () => {
+  const exe = "C:\\Users\\alice\\AppData\\Local\\OSAVA\\osava-backend.exe";
+  const packaged = createOwnTracker({ pid: 7000, exe, packaged: true });
+  assert.equal(packaged.claims(proc(1, "{EEEE0007-0000-0000-0000-000000000007}", 6123, exe, PS)), true, "parent was an earlier osava-backend.exe");
+  const dev = createOwnTracker({ pid: 7000, exe, packaged: false });
+  assert.equal(dev.claims(proc(1, "{EEEE0008-0000-0000-0000-000000000008}", 6123, exe, PS)), false, "in development the pid must match too");
+});
+
+test("own activity: the backend's own events count, by pid and executable, even if its creation was never read", () => {
+  const t = createOwnTracker({ pid: 5000, exe: NODE, packaged: false });
+  const net = (pid: string, image: string) => rec(1, 3, { ProcessGuid: "{FFFF0009-0000-0000-0000-000000000009}", ProcessId: pid, Image: image,
+    DestinationIp: "127.0.0.1", DestinationPort: "8089" });
+  assert.equal(t.claims(net("5000", "C:\\Windows\\System32\\svchost.exe")), false);
+  assert.equal(t.claims(net("5000", NODE)), true);
+});
+
+test("own activity: memory is bounded", () => {
+  const t = createOwnTracker({ pid: 5000, exe: NODE, packaged: false });
+  for (let i = 0; i < 4200; i++) t.claims(proc(i + 1, `{${String(i).padStart(8, "0")}-0000-0000-0000-000000000000}`, 5000, NODE, PS));
+  assert.equal(t.size(), 4096);
+});
+
+test("a scan skips OSAVA's own PowerShell and its policy-test file, counts them, and judges the rest", async () => {
+  // This test process plays the backend: its own pid and executable are what the live tracker looks for.
+  const child = "{12340000-0000-0000-0000-00000000000a}";
+  const recs = [
+    rec(1, 1, { ProcessGuid: child, ProcessId: "4242", Image: PS, CommandLine: "powershell.exe -NoProfile -NonInteractive -Command Get-WinEvent",
+      ParentProcessGuid: "{12340000-0000-0000-0000-00000000000b}", ParentProcessId: String(process.pid), ParentImage: process.execPath, User: "CORP\\alice" }),
+    fileBy(2, child, PS, POLICY),
+    wordShell(3),
+  ];
+  const s = await scanOnce(25, logOf(recs));
+  assert.equal(s.own, 2);
+  assert.equal(s.classified, 1);
+  assert.equal(s.outOfDomain, 0, "OSAVA's own events are not counted as anything else");
+  assert.equal(s.bookmark, 3, "and the bookmark moves past them");
+  assert.equal(calls.length, 1);
+  assert.ok(!calls[0]!.includes("PSScriptPolicyTest") && !calls[0]!.includes("Get-WinEvent"), "the model never saw them");
+  assert.equal(Object.keys((await readState()).verdicts).length, 1);
+});
+
 // ── monitor ────────────────────────────────────────────────────────────────
 
 const summary = (over: Partial<ScanSummary> = {}): ScanSummary =>
   ({
-    read: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false,
+    read: 0, own: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false,
     bookmark: 0, securityBookmark: 0, securityUnreadable: false, ...over,
   });
 const FAST = { minIntervalMs: 5, catchUpMs: 5, retryBaseMs: 5 };
