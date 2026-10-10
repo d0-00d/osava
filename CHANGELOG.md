@@ -53,6 +53,14 @@ High, and 26% of a held-back half it was not.
 
 These change reasons and tags on verdicts made from now on; stored verdicts keep the words they were given.
 
+### Fixed
+
+- **The splash said the model was "pending (runtime not wired up yet)"** on every start, a placeholder from before
+  the model was integrated. It now reports what is on disk: the model installed and verified (with its checksum),
+  present but not verified for this build, or not installed, and whether the llama.cpp runtime is there. It reads
+  the record written when the model was verified rather than hashing 1.9 GB, and never claims the model is
+  running: it loads when monitoring starts.
+
 ## Alpha v0.3: Behaviour triage (2026-10-09)
 
 OSAVA now uses the SENTRI-Classifier v3 model end to end. The classifier backend landed earlier on this

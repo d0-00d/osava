@@ -1,7 +1,10 @@
 import { Router } from "express";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { CLAMAV_DIR, CLAMDB_DIR } from "../config";
+import { CONTRACT } from "../services/behaviour/contractSpec";
+import { MODEL_PATH, SERVER_EXE, modelVerified } from "../services/behaviour/runtime";
 import { readStatusFile, readHistoryFile } from "../services/statusFile";
 
 const router = Router();
@@ -123,12 +126,24 @@ router.get("/api/boot", async (req, res) => {
     }
     await sleep(200);
 
-    // ── Step 7: smolLM assistant ────────────────────────────
-    // Not implemented yet. Reported as "pending" on purpose so the splash
-    // shows the slot without ever claiming the runtime is available.
-    send("log", "> Checking smolLM assistant runtime...");
+    // ── Step 7: Behaviour model ─────────────────────────────
+    // What is on disk, from cheap checks only: the model is hashed once, when it
+    // is installed, and that record is what is read here (hashing 1.9 GB on every
+    // launch would hold the splash for seconds). The model is loaded later, when
+    // monitoring starts, so this never claims it is running.
+    send("log", "> Checking behaviour model...");
     await sleep(300);
-    send("pending", "  smolLM — pending (runtime not wired up yet)");
+    const name = CONTRACT.model.name ?? "osava-smollm";
+    const sha = CONTRACT.model.gguf_sha256 ? `sha256 ${CONTRACT.model.gguf_sha256.slice(0, 8)}…` : "no model bound";
+    if (await modelVerified()) {
+      send("ok", `  ${name} installed and verified (${sha})`);
+      if (existsSync(SERVER_EXE)) send("ok", "  llama.cpp runtime ready; the model loads when monitoring starts");
+      else send("warn", "  llama.cpp runtime missing: open Behaviour and press Install model");
+    } else if (existsSync(MODEL_PATH)) {
+      send("warn", `  ${name} file present but not verified for this build: open Behaviour and press Install model`);
+    } else {
+      send("log", `  ${name} not installed: set it up from the Behaviour tab`);
+    }
     await sleep(200);
 
     // ── Done ────────────────────────────────────────────────

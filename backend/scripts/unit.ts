@@ -25,6 +25,7 @@ import { isExpected, markExpected, readState, writeState } from "../src/services
 import { parseBody, signature } from "../src/services/behaviour/signature";
 import express from "express";
 import behaviourRoutes from "../src/routes/behaviour";
+import bootRoutes from "../src/routes/boot";
 import { API_PORT } from "../src/config";
 import { ALLOWED_ORIGINS, localOnly } from "../src/routes/localOnly";
 import { download, DownloadError } from "../src/services/behaviour/download";
@@ -1064,4 +1065,39 @@ test("parent watch: a process we may not signal still counts as alive (EPERM is 
     process.kill = (() => { throw Object.assign(new Error("gone"), { code: "ESRCH" }); }) as typeof process.kill;
     assert.equal(pidAlive(4242), false);
   } finally { process.kill = real; }
+});
+
+// ── splash ─────────────────────────────────────────────────────────────────
+
+test("the splash reports the behaviour model as it is on disk, and never as 'pending'", async () => {
+  const app = express();
+  app.use(bootRoutes);
+  const srv = app.listen(0, "127.0.0.1");
+  await new Promise((r) => srv.once("listening", r));
+  const port = (srv.address() as { port: number }).port;
+  const boot = async () => (await (await fetch(`http://127.0.0.1:${port}/api/boot`)).text())
+    .split("\n\n").filter(Boolean).map((e) => JSON.parse(e.replace(/^data: /, "")) as { type: string; text: string });
+  const has = (lines: { type: string; text: string }[], type: string, re: RegExp) => lines.some((l) => l.type === type && re.test(l.text));
+  try {
+    fs.rmSync(LLM_DIR, { recursive: true, force: true });
+    let lines = await boot();
+    assert.ok(!lines.some((l) => l.type === "pending"), "nothing is reported as planned but missing");
+    assert.ok(has(lines, "log", /not installed: set it up from the Behaviour tab/));
+
+    fs.mkdirSync(LLM_DIR, { recursive: true });
+    fs.writeFileSync(MODEL_PATH, "a file nobody has checked");
+    assert.ok(has(await boot(), "warn", /present but not verified/));
+
+    // the record installModel() writes once the file hashed to the contract's checksum
+    const st = fs.statSync(MODEL_PATH);
+    fs.writeFileSync(path.join(LLM_DIR, "model.verified.json"),
+      JSON.stringify({ sha256: CONTRACT.model.gguf_sha256, size: st.size, mtimeMs: st.mtimeMs }));
+    lines = await boot();
+    assert.ok(has(lines, "ok", new RegExp(`installed and verified \\(sha256 ${CONTRACT.model.gguf_sha256!.slice(0, 8)}`)));
+    assert.ok(has(lines, "warn", /llama\.cpp runtime missing/), "the scratch profile has no llama-server");
+    assert.ok(!lines.some((l) => /running|loaded and ready/i.test(l.text)), "the splash never claims the model is running");
+  } finally {
+    srv.close();
+    fs.rmSync(LLM_DIR, { recursive: true, force: true });
+  }
 });
