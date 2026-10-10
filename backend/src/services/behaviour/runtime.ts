@@ -409,7 +409,15 @@ async function launchOn(dev: string | null): Promise<void> {
         stopServer();
         throw new ModelUnavailable(`port ${PORT} is answered by a llama-server OSAVA did not start`);
       }
-      const failure = await canaryFailure();
+      let failure: string | null;
+      try {
+        failure = await canaryFailure();
+      } catch (e) {
+        // A server that answers /health and then fails its first decode -- an integrated GPU out of shared memory
+        // says `vk::CommandBuffer::end: ErrorOutOfDeviceMemory` -- is the device failing too, not the model.
+        if (dev === "none") throw e;
+        throw new DeviceFailure(`the self-test could not run: ${(e as Error).message} (${where})`);
+      }
       if (failure) {
         // Wrong answers from a GPU are a driver problem worth a CPU retry; wrong answers from the CPU are the model.
         throw dev === "none" ? new ModelUnavailable(failure) : new DeviceFailure(`${failure} (${where})`);
