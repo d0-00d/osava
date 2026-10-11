@@ -55,10 +55,11 @@ async function sysmonInfo(): Promise<SysmonInfo> {
 router.get("/api/behaviour/status", async (_req, res) => {
   try {
     const st = await readState();
-    const counts = { benign: 0, suspicious: 0, malicious: 0, needsReview: 0, expected: 0 };
+    const counts = { benign: 0, suspicious: 0, malicious: 0, needsReview: 0, expected: 0, earlierModel: 0 };
     for (const v of Object.values(st.verdicts)) {
       const cls = (CONTRACT.severity.bucket[v.severity] ?? "suspicious") as keyof typeof counts;
       counts[cls]++;
+      if (v.modelSha256 !== CONTRACT.model.gguf_sha256) counts.earlierModel++;
       if (isExpected(v)) counts.expected++;
       else if (v.needsReview) counts.needsReview++;
     }

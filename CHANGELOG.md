@@ -55,6 +55,10 @@ These change reasons and tags on verdicts made from now on; stored verdicts keep
 
 ### Fixed
 
+- **A new model's verdicts replace the old ones without waiting.** After a model upgrade, a behaviour was judged
+  again only when it happened to recur, so the old model's verdicts stayed on screen looking current. Each scan now
+  re-judges stored behaviours from the event stored with them, with the budget new events leave, keeping first
+  and last seen and the count. Until then they are marked *Earlier model* and the tab says how many are left.
 - **The splash said the model was "pending (runtime not wired up yet)"** on every start, a placeholder from before
   the model was integrated. It now reports what is on disk: the model installed and verified (with its checksum),
   present but not verified for this build, or not installed, and whether the llama.cpp runtime is there. It reads

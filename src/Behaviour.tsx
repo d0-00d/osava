@@ -34,10 +34,14 @@ type Verdict = {
   count: number;
   /** a person marked this behaviour as normal here; the verdict above is still the model's */
   expected?: { at: string; severity: string } | null;
+  /** the model that made this verdict; one that is not the installed model's is waiting to be judged again */
+  modelSha256?: string;
 };
 
 type ScanSummary = {
   read: number; own?: number; outOfDomain: number; known: number; classified: number;
+  /** stored behaviours an earlier model judged, judged again this scan; and how many are still waiting */
+  rejudged?: number; stale?: number;
   deferred: boolean; more: boolean; bookmark: number;
   securityBookmark?: number;
   /** logons were not assessed: the Security log refused this account */
@@ -85,7 +89,7 @@ type Status = {
   monitor: Monitor;
   scanning: boolean;
   behaviours: number;
-  counts: { benign: number; suspicious: number; malicious: number; needsReview: number; expected?: number };
+  counts: { benign: number; suspicious: number; malicious: number; needsReview: number; expected?: number; earlierModel?: number };
   outOfDomain: number;
   supportedEventIds: number[];
   bookmark: number;
@@ -178,9 +182,11 @@ function Kpi({ label, value, note, attn, small }: { label: string; value: string
   );
 }
 
-function VerdictRow({ v, open, onToggle, marking, onExpected }: {
+function VerdictRow({ v, open, onToggle, marking, onExpected, currentModel }: {
   v: Verdict; open: boolean; onToggle: () => void; marking: boolean; onExpected: (on: boolean) => void;
+  currentModel: string | undefined;
 }) {
+  const earlier = !!currentModel && !!v.modelSha256 && v.modelSha256 !== currentModel;
   const image = baseName(field(v.sample, "Image"));
   const kind = field(v.sample, "EventType");
   const detail = detailOf(v.sample);
@@ -193,6 +199,7 @@ function VerdictRow({ v, open, onToggle, marking, onExpected }: {
         <StatusPill tone={SEVERITY_TONE[v.severity]}>{SEVERITY_LABEL[v.severity]}</StatusPill>
         <span className="osv-verdict-title">{image ?? kind ?? "Event"}</span>
         {image && kind && <span className="osv-verdict-kind">{kind}</span>}
+        {earlier && <StatusPill tone="neutral">Earlier model</StatusPill>}
         {v.expected
           ? <StatusPill tone="neutral">Expected</StatusPill>
           : <>
@@ -352,6 +359,7 @@ export default function Behaviour() {
       tone: "ok",
       text: `Read ${s.read} events: ${s.classified} new behaviour${s.classified === 1 ? "" : "s"} judged, ` +
         `${s.known} already known, ${s.outOfDomain} not assessed` +
+        (s.rejudged ? `, ${s.rejudged} judged again by the current model` : "") +
         (s.own ? `, ${s.own} OSAVA's own (not judged)` : "") +
         `.${s.more ? " More is waiting; scan again to continue." : ""}` +
         (s.securityUnreadable ? " Logons were not assessed: this account cannot read the Security log." : ""),
@@ -415,6 +423,14 @@ export default function Behaviour() {
       {link === "refused" && <Notice tone="warn">The OSAVA backend refused this window. Behaviour data is only served to the OSAVA app itself.</Notice>}
       {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
       {showStopped && <Notice tone="bad">Monitoring stopped: {m?.error?.message}</Notice>}
+      {!!status?.counts.earlierModel && (
+        <Notice tone="warn">
+          {status.counts.earlierModel} behaviour{status.counts.earlierModel === 1 ? " was" : "s were"} judged by an earlier
+          model and {status.counts.earlierModel === 1 ? "is" : "are"} marked <i>Earlier model</i>. The current model judges
+          {status.counts.earlierModel === 1 ? " it" : " them"} again from the stored event as monitoring runs (or press
+          Scan once); until then those verdicts are the old model's.
+        </Notice>
+      )}
       {!showStopped && m?.phase !== "off" && m?.lastScan?.securityUnreadable && (
         <Notice tone="warn">
           Logons are not being assessed. This account can read the Sysmon log but not the Security log, so sign-ins and
@@ -601,7 +617,8 @@ export default function Behaviour() {
             {verdicts.map((v) => (
               <VerdictRow key={v.signature} v={v} open={!!open[v.signature]}
                           onToggle={() => setOpen((o) => ({ ...o, [v.signature]: !o[v.signature] }))}
-                          marking={marking === v.signature} onExpected={(on) => void markExpected(v, on)} />
+                          marking={marking === v.signature} onExpected={(on) => void markExpected(v, on)}
+                          currentModel={status.model.gguf_sha256} />
             ))}
           </div>
           {verdicts.length === 200 && <p className="osv-fine">Showing the 200 that matter most.</p>}

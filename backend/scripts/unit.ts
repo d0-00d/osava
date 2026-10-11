@@ -201,6 +201,60 @@ test("a verdict made by a different model is judged again, keeping its history",
   }
 });
 
+test("after a model change, stored behaviours are judged again from their stored event, keeping their history", async () => {
+  decide = bySev;
+  await scanOnce(25, logOf([wordShell(1), whoami(2), svchost(3)]));
+  const before = (await readState()).verdicts;
+  const shell = Object.keys(before).find((k) => before[k]!.sample.includes("-enc "))!;
+  await markExpected(shell, true);
+  const original = CONTRACT.model.gguf_sha256;
+  assert.ok(original, "the contract is bound to a model");
+  CONTRACT.model.gguf_sha256 = "c".repeat(64);
+  try {
+    calls = [];
+    const s = await scanOnce(25, logOf([wordShell(1), whoami(2), svchost(3)]));   // nothing new in the log
+    assert.equal(s.classified, 0);
+    assert.equal(s.rejudged, 3);
+    assert.equal(s.stale, 0);
+    assert.equal(calls.length, 3, "each stored event went to the new model once");
+    const after = (await readState()).verdicts;
+    for (const [k, v] of Object.entries(after)) {
+      assert.equal(v.modelSha256, "c".repeat(64));
+      assert.equal(v.sample, before[k]!.sample, "judged from the event that was stored");
+      assert.equal(v.count, before[k]!.count);
+      assert.equal(v.firstSeen, before[k]!.firstSeen);
+    }
+    assert.equal(after[shell]!.expected, undefined, "a mark given to the old verdict does not carry over");
+  } finally {
+    CONTRACT.model.gguf_sha256 = original;
+  }
+});
+
+test("re-judging shares the per-scan budget, after new events, and says when more is waiting", async () => {
+  decide = bySev;
+  await scanOnce(25, logOf([wordShell(1), whoami(2), svchost(3)]));
+  const original = CONTRACT.model.gguf_sha256;
+  assert.ok(original, "the contract is bound to a model");
+  CONTRACT.model.gguf_sha256 = "b".repeat(64);
+  try {
+    const log = logOf([wordShell(1), whoami(2), svchost(3), tool(4, "fresh")]);
+    calls = [];
+    let s = await scanOnce(2, log);
+    assert.equal(s.classified, 1, "the new behaviour is judged first");
+    assert.equal(s.rejudged, 1);
+    assert.equal(s.stale, 2);
+    assert.equal(s.more, true, "more is waiting, so the monitor follows up at once");
+    assert.ok(calls[0]!.includes("fresh.exe"));
+    s = await scanOnce(2, log);
+    assert.equal(s.rejudged, 2);
+    assert.equal(s.stale, 0);
+    s = await scanOnce(2, log);
+    assert.deepEqual([s.rejudged, s.stale, s.more], [0, 0, false], "and then there is nothing left to do");
+  } finally {
+    CONTRACT.model.gguf_sha256 = original;
+  }
+});
+
 test("two scans started together are one scan", async () => {
   delayMs = 30;
   const recs = [svchost(1), wordShell(2), whoami(3)];
@@ -546,7 +600,7 @@ test("expected: through the API, a marked behaviour leaves 'Needs review', sorts
 const summary = (over: Partial<ScanSummary> = {}): ScanSummary =>
   ({
     read: 0, own: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false,
-    bookmark: 0, securityBookmark: 0, securityUnreadable: false, ...over,
+    bookmark: 0, securityBookmark: 0, securityUnreadable: false, rejudged: 0, stale: 0, ...over,
   });
 const FAST = { minIntervalMs: 5, catchUpMs: 5, retryBaseMs: 5 };
 

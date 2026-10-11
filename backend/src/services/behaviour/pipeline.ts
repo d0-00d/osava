@@ -32,6 +32,10 @@ export interface ScanSummary {
   securityBookmark: number;
   /** logons were not assessed because the Security log refused this account */
   securityUnreadable: boolean;
+  /** stored behaviours an earlier model had judged, judged again from their stored event this scan */
+  rejudged: number;
+  /** stored behaviours still carrying an earlier model's verdict after this scan */
+  stale: number;
 }
 
 /** Where records come from. The Sysmon log in production; a script in tests. */
@@ -70,6 +74,7 @@ async function run(maxNew: number, src: Sources): Promise<ScanSummary> {
   const sum: ScanSummary = {
     read: 0, own: 0, outOfDomain: 0, known: 0, classified: 0, deferred: false, more: false,
     bookmark: st.bookmark, securityBookmark: st.securityBookmark ?? 0, securityUnreadable: false,
+    rejudged: 0, stale: 0,
   };
   const model = CONTRACT.model.gguf_sha256;
   let dirty = false;
@@ -154,9 +159,27 @@ async function run(maxNew: number, src: Sources): Promise<ScanSummary> {
       const events = await src.sysmon(st.bookmark, PAGE);
       sum.read += events.length;
       if (events.length >= PAGE) sum.more = true;
-      await drain(events, (id) => { st.bookmark = id; });
+      budgetLeft = await drain(events, (id) => { st.bookmark = id; });
+    }
+
+    // Behaviours an earlier model judged are judged again by this one, from the event stored with each, with
+    // whatever budget the new events left. Before, an upgrade left the old verdicts on screen, looking current,
+    // until each behaviour happened to recur. History (first and last seen, count) is kept; a person's
+    // "expected" is not, because it was given to the old verdict.
+    if (budgetLeft) {
+      for (const [sig, old] of Object.entries(st.verdicts)) {
+        if (old.modelSha256 === model) continue;
+        if (sum.classified + sum.rejudged >= maxNew) { sum.more = true; break; }
+        const v = await classify(old.sample, { baseUrl: baseUrl(), apiKey: currentApiKey() });
+        st.verdicts[sig] = {
+          ...v, signature: sig, sample: old.sample, firstSeen: old.firstSeen, lastSeen: old.lastSeen, count: old.count,
+        };
+        sum.rejudged++;
+        dirty = true;
+      }
     }
   } finally {
+    sum.stale = Object.values(st.verdicts).filter((v) => v.modelSha256 !== model).length;
     st.outOfDomain += sum.outOfDomain;
     sum.bookmark = st.bookmark;
     sum.securityBookmark = st.securityBookmark ?? 0;
