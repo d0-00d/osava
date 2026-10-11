@@ -468,6 +468,7 @@
   color: var(--osv-text-dim);
 }
 .osv-verdict-actions { margin-left: auto; display: inline-flex; gap: 16px; }
+.osv-group-members { display: flex; flex-direction: column; gap: 10px; padding: 10px 0 0 12px; border-top: 1px solid var(--osv-teal-border); }
 .osv-link:disabled { opacity: 0.5; cursor: default; }
 
 .osv-tag--neutral { background: rgba(202, 197, 202, 0.06); border-color: rgba(202, 197, 202, 0.2); }

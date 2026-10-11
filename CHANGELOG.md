@@ -55,6 +55,13 @@ These change reasons and tags on verdicts made from now on; stored verdicts keep
 
 ### Fixed
 
+- **One installer or update no longer floods the list.** A program writing many files under one folder (or many
+  values under one registry key) was one row per write: an app unpacking its runtime made 2,078 rows on the
+  development PC, about 1,050 of them High. Each write is still its own behaviour and is still judged on its own
+  (merging them would let a payload hide beside harmless files), but three or more by one program under one
+  place now show as one row: how many, how they were judged, worst first, openable, and *Mark all as expected*.
+  On that PC, *Needs review* went from 1,640 rows to 346. `GET /verdicts?group=1`, `GET /verdicts/group?key=`,
+  `POST /verdicts/expected {group}`.
 - **A new model's verdicts replace the old ones without waiting.** After a model upgrade, a behaviour was judged
   again only when it happened to recur, so the old model's verdicts stayed on screen looking current. Each scan now
   re-judges stored behaviours from the event stored with them, with the budget new events leave, keeping first

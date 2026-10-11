@@ -38,6 +38,23 @@ type Verdict = {
   modelSha256?: string;
 };
 
+/** Many writes by one program under one place (an installer, an update): one row, each write still judged (group.ts). */
+type GroupItem = {
+  kind: "group";
+  key: string;
+  what: "file" | "registry";
+  image: string;
+  place: string;
+  count: number;
+  bySeverity: Record<string, number>;
+  needsReview: number;
+  expected: number;
+  firstSeen: string;
+  lastSeen: string;
+  top: Verdict;
+};
+type Item = (Verdict & { kind?: "behaviour" }) | GroupItem;
+
 type ScanSummary = {
   read: number; own?: number; outOfDomain: number; known: number; classified: number;
   /** stored behaviours an earlier model judged, judged again this scan; and how many are still waiting */
@@ -265,10 +282,70 @@ function VerdictRow({ v, open, onToggle, marking, onExpected, currentModel }: {
   );
 }
 
+const SEVERITY_ORDER = ["high", "medium", "low", "none"] as const;
+
+/** One program's many writes under one place. Each was judged on its own; the row shows the worst of them. */
+function GroupRow({ g, view, open, members, onToggle, marking, onExpectedAll, renderMember }: {
+  g: GroupItem; view: "review" | "all"; open: boolean; members: Verdict[] | undefined; onToggle: () => void;
+  marking: boolean; onExpectedAll: (on: boolean) => void; renderMember: (v: Verdict) => React.ReactNode;
+}) {
+  const sev = g.top.severity;
+  const things = g.what === "file" ? "files" : "registry values";
+  const allExpected = g.expected === g.count;
+  const showing = view === "review" ? g.needsReview : g.count;
+  return (
+    <article className={`osv-verdict osv-verdict--${sev === "critical" ? "high" : sev} osv-verdict--group`}>
+      <div className="osv-verdict-head">
+        <StatusPill tone={SEVERITY_TONE[sev]}>{SEVERITY_LABEL[sev]}</StatusPill>
+        <span className="osv-verdict-title">{baseName(g.image) ?? g.image}</span>
+        <span className="osv-verdict-kind">wrote {g.count} {things}</span>
+        {allExpected && <StatusPill tone="neutral">Expected</StatusPill>}
+      </div>
+      <div className="osv-verdict-detail" title={g.place}>under {g.place}</div>
+      <p className="osv-verdict-reason">
+        One program writing many {things} in one place, as an installer or an update does. Each was judged on its own;
+        this row shows the worst of them.{" "}
+        {g.needsReview ? `${g.needsReview} of ${g.count} need${g.needsReview === 1 ? "s" : ""} review.` : "None needs review."}
+      </p>
+      <div className="osv-tags">
+        {SEVERITY_ORDER.filter((s) => g.bySeverity[s]).map((s) => (
+          <span className={`osv-tag${s === "high" ? "" : s === "medium" ? " osv-tag--warn" : " osv-tag--neutral"}`} key={s}>
+            <b>{SEVERITY_LABEL[s]}</b>{g.bySeverity[s]}
+          </span>
+        ))}
+      </div>
+      <div className="osv-verdict-meta">
+        <span>first seen {new Date(g.firstSeen).toLocaleString()}</span>
+        <span>last seen {ago(g.lastSeen)}</span>
+        {g.expected > 0 && !allExpected && <span>{g.expected} marked expected</span>}
+        <span className="osv-verdict-actions">
+          <button className="osv-link" disabled={marking} onClick={() => onExpectedAll(!allExpected)}
+                  title={allExpected ? "Put them back under Needs review." : `Mark all ${g.count} as normal on this PC. Each keeps the model's verdict.`}>
+            {marking ? "Saving…" : allExpected ? "Undo expected" : "Mark all as expected"}
+          </button>
+          <button className="osv-link" onClick={onToggle} aria-expanded={open}>
+            {open ? "Hide" : showing === g.count ? `Show all ${g.count}` : `Show the ${showing}`}
+          </button>
+        </span>
+      </div>
+      {open && (
+        <div className="osv-group-members">
+          {members ? members.map(renderMember) : <p className="osv-fine">Loading…</p>}
+          {members && members.length === 500 && <p className="osv-fine">Showing the 500 that matter most.</p>}
+        </div>
+      )}
+    </article>
+  );
+}
+
 export default function Behaviour() {
   const [status, setStatus] = useState<Status | null>(null);
   const [link, setLink] = useState<"ok" | "offline" | "refused">("ok");
-  const [verdicts, setVerdicts] = useState<Verdict[]>([]);
+  const [verdicts, setVerdicts] = useState<Item[]>([]);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [members, setMembers] = useState<Record<string, Verdict[]>>({});
+  const openGroupsRef = useRef(openGroups);
+  openGroupsRef.current = openGroups;
   const [view, setView] = useState<"review" | "all">("review");
   const [busy, setBusy] = useState<Busy>(null);
   const [notice, setNotice] = useState<{ tone: Tone; text: string } | null>(null);
@@ -278,12 +355,21 @@ export default function Behaviour() {
   const viewRef = useRef(view);
   viewRef.current = view;
 
-  const loadVerdicts = useCallback(async (v: "review" | "all") => {
+  const loadMembers = useCallback(async (key: string, v: "review" | "all") => {
     try {
-      const r = await call<Verdict[]>(`/verdicts?view=${v}&limit=200`);
-      if (r.ok && Array.isArray(r.body)) setVerdicts(r.body as Verdict[]);
+      const r = await call<Verdict[]>(`/verdicts/group?view=${v}&limit=500&key=${encodeURIComponent(key)}`);
+      if (r.ok && Array.isArray(r.body)) setMembers((m) => ({ ...m, [key]: r.body as Verdict[] }));
     } catch { /* the status poll reports an unreachable backend */ }
   }, []);
+
+  const loadVerdicts = useCallback(async (v: "review" | "all") => {
+    try {
+      const r = await call<Item[]>(`/verdicts?view=${v}&limit=200&group=1`);
+      if (r.ok && Array.isArray(r.body)) setVerdicts(r.body as Item[]);
+      // an open group shows the same moment as the list around it
+      for (const [key, isOpen] of Object.entries(openGroupsRef.current)) if (isOpen) void loadMembers(key, v);
+    } catch { /* the status poll reports an unreachable backend */ }
+  }, [loadMembers]);
 
   const refresh = useCallback(async () => {
     try {
@@ -330,6 +416,34 @@ export default function Behaviour() {
       void refresh();
     }
   }
+
+  async function markGroup(g: GroupItem, on: boolean) {
+    setMarking(g.key);
+    try {
+      const r = await call<{ changed: number }>("/verdicts/expected", "POST", { group: g.key, expected: on });
+      if (!r.ok) setNotice({ tone: "warn", text: r.body?.error ?? "Those behaviours could not be changed." });
+    } catch {
+      setLink("offline");
+      setNotice({ tone: "warn", text: "Could not reach the OSAVA backend." });
+    } finally {
+      setMarking(null);
+      await loadVerdicts(viewRef.current);
+      void refresh();
+    }
+  }
+
+  function toggleGroup(key: string) {
+    const next = !openGroups[key];
+    setOpenGroups((o) => ({ ...o, [key]: next }));
+    if (next) void loadMembers(key, view);
+  }
+
+  const verdictRow = (v: Verdict) => (
+    <VerdictRow key={v.signature} v={v} open={!!open[v.signature]}
+                onToggle={() => setOpen((o) => ({ ...o, [v.signature]: !o[v.signature] }))}
+                marking={marking === v.signature} onExpected={(on) => void markExpected(v, on)}
+                currentModel={status?.model.gguf_sha256} />
+  );
 
   const installSysmon = () => run("sysmon", async () => {
     const r = await call<{ note?: string }>("/install-sysmon", "POST");
@@ -614,12 +728,11 @@ export default function Behaviour() {
           )}
 
           <div className="osv-verdicts">
-            {verdicts.map((v) => (
-              <VerdictRow key={v.signature} v={v} open={!!open[v.signature]}
-                          onToggle={() => setOpen((o) => ({ ...o, [v.signature]: !o[v.signature] }))}
-                          marking={marking === v.signature} onExpected={(on) => void markExpected(v, on)}
-                          currentModel={status.model.gguf_sha256} />
-            ))}
+            {verdicts.map((v) => v.kind === "group"
+              ? <GroupRow key={v.key} g={v} view={view} open={!!openGroups[v.key]} members={members[v.key]}
+                          onToggle={() => toggleGroup(v.key)} marking={marking === v.key}
+                          onExpectedAll={(on) => void markGroup(v, on)} renderMember={verdictRow} />
+              : verdictRow(v))}
           </div>
           {verdicts.length === 200 && <p className="osv-fine">Showing the 200 that matter most.</p>}
         </div>

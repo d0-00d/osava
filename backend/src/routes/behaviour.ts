@@ -9,7 +9,8 @@ import { cancelInstall, installState, startInstall } from "../services/behaviour
 import {
   MODEL_PATH, ModelUnavailable, SERVER_EXE, deviceUsed, isHealthy, modelVerified, startServer,
 } from "../services/behaviour/runtime";
-import { isExpected, markExpected, readState, type BehaviourRecord } from "../services/behaviour/store";
+import { isExpected, markExpected, markExpectedWhere, readState, type BehaviourRecord } from "../services/behaviour/store";
+import { groupBursts, membersOf, placeOf } from "../services/behaviour/group";
 import { ElevationDenied, installSysmon, sysmonStatus, type SysmonService } from "../services/behaviour/sysmonInstall";
 import { localOnly } from "./localOnly";
 
@@ -139,24 +140,46 @@ router.get("/api/behaviour/verdicts", async (req, res) => {
   const st = await readState();
   const onlyReview = req.query["view"] === "review";
   const limit = Math.min(Math.max(Math.floor(Number(req.query["limit"])) || 200, 1), 1000);
-  const list = Object.values(st.verdicts)
-    .map(present)
-    .filter((v) => !onlyReview || v.needsReview)
+  const all = Object.values(st.verdicts).map(present);
+  const shown = (v: (typeof all)[number]) => !onlyReview || v.needsReview;
+  // group=1: one program's writes under one folder or registry key, 3 or more, become one row (group.ts).
+  if (req.query["group"] === "1") return res.json(groupBursts(all, shown).slice(0, limit));
+  res.json(all.filter(shown)
     .sort((a, b) =>
       Number(b.needsReview) - Number(a.needsReview) ||
       (RANK[b.severity] ?? 0) - (RANK[a.severity] ?? 0) ||
       b.lastSeen.localeCompare(a.lastSeen))
-    .slice(0, limit);
-  res.json(list);
+    .slice(0, limit));
+});
+
+// The behaviours behind one grouped row, worst first.
+router.get("/api/behaviour/verdicts/group", async (req, res) => {
+  const key = req.query["key"];
+  if (typeof key !== "string" || !key) return res.status(400).json({ error: "Send ?key=<group key>." });
+  const st = await readState();
+  const onlyReview = req.query["view"] === "review";
+  const limit = Math.min(Math.max(Math.floor(Number(req.query["limit"])) || 500, 1), 5000);
+  const list = Object.values(st.verdicts).map(present).filter((v) => !onlyReview || v.needsReview);
+  res.json(membersOf(list, key).slice(0, limit));
 });
 
 // A person says this behaviour is normal on this PC (or takes that back). The model's verdict is kept as it is;
 // the behaviour only leaves "Needs review". It holds for the verdict of the model that made it: once a different
 // model judges the behaviour, it asks for review again.
 router.post("/api/behaviour/verdicts/expected", async (req, res) => {
-  const { signature, expected } = (req.body ?? {}) as { signature?: unknown; expected?: unknown };
+  const { signature, group, expected } = (req.body ?? {}) as { signature?: unknown; group?: unknown; expected?: unknown };
+  // A whole grouped row at once: every behaviour it holds, in one write.
+  if (typeof group === "string" && typeof expected === "boolean") {
+    try {
+      const changed = await markExpectedWhere((v) => placeOf(v.sample)?.key === group, expected);
+      if (!changed) return res.status(404).json({ error: "There is no such group." });
+      return res.json({ changed });
+    } catch (e) {
+      return fail(res, e);
+    }
+  }
   if (typeof signature !== "string" || typeof expected !== "boolean") {
-    return res.status(400).json({ error: "Send { signature: string, expected: boolean }." });
+    return res.status(400).json({ error: "Send { signature: string, expected: boolean } or { group: string, expected: boolean }." });
   }
   try {
     const v = await markExpected(signature, expected);

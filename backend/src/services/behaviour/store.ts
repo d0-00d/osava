@@ -78,15 +78,31 @@ export function exclusive<T>(fn: () => Promise<T>): Promise<T> {
   return p;
 }
 
+const setExpected = (v: BehaviourRecord, on: boolean, at: string) => {
+  if (on) v.expected = { at, modelSha256: v.modelSha256 ?? "", severity: v.severity };
+  else delete v.expected;
+};
+
 /** Marks (or unmarks) one behaviour as expected. Null when there is no such behaviour. */
 export function markExpected(signature: string, on: boolean): Promise<BehaviourRecord | null> {
   return exclusive(async () => {
     const st = await readState();
     const v = st.verdicts[signature];
     if (!v) return null;
-    if (on) v.expected = { at: new Date().toISOString(), modelSha256: v.modelSha256 ?? "", severity: v.severity };
-    else delete v.expected;
+    setExpected(v, on, new Date().toISOString());
     await writeState(st);
     return v;
+  });
+}
+
+/** The same for every behaviour `pick` selects, in one write. Returns how many it changed. */
+export function markExpectedWhere(pick: (v: BehaviourRecord) => boolean, on: boolean): Promise<number> {
+  return exclusive(async () => {
+    const st = await readState();
+    const at = new Date().toISOString();
+    const hit = Object.values(st.verdicts).filter(pick);
+    for (const v of hit) setExpected(v, on, at);
+    if (hit.length) await writeState(st);
+    return hit.length;
   });
 }

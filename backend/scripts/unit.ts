@@ -26,6 +26,7 @@ import { parseBody, signature } from "../src/services/behaviour/signature";
 import express from "express";
 import behaviourRoutes from "../src/routes/behaviour";
 import bootRoutes from "../src/routes/boot";
+import { groupBursts, placeOf } from "../src/services/behaviour/group";
 import { API_PORT } from "../src/config";
 import { ALLOWED_ORIGINS, localOnly } from "../src/routes/localOnly";
 import { download, DownloadError } from "../src/services/behaviour/download";
@@ -1155,3 +1156,79 @@ test("the splash reports the behaviour model as it is on disk, and never as 'pen
     fs.rmSync(LLM_DIR, { recursive: true, force: true });
   }
 });
+
+// ── bursts ─────────────────────────────────────────────────────────────────
+
+const TAR = "C:\\Windows\\System32\\tar.exe";
+const unpack = (id: number, file: string, dir = "codex-runtime-install-ybzbda") => rec(id, 11, {
+  Image: TAR, User: "CORP\\alice", TargetFilename: `C:\\Users\\alice\\.cache\\codex-runtimes\\${dir}\\payload\\node\\${file}` });
+
+test("bursts: a write's place is its folder cut to four levels, or a registry Classes root", () => {
+  const body = (eid: number, target: string, image = TAR) => `EventID: ${eid}\nEventType: x\nImage: ${image}\nTargetFilename: ${target}`;
+  assert.equal(placeOf(body(11, "C:\\Users\\alice\\.cache\\codex-runtimes\\codex-runtime-install-ybzbda\\payload\\node\\lib\\a.js"))!.place,
+    "<profile>\\.cache\\codex-runtimes\\codex-runtime-install-ybzbda");
+  assert.equal(placeOf(body(13, "HKU\\S-1-5-21-1-2-3-1001_Classes\\VSCode.cfg\\shell\\open\\command\\(Default)"))!.place,
+    "hku\\<sid>_classes", "each file type an installer registers is its own key under Classes");
+  assert.equal(placeOf(body(13, "HKLM\\System\\CurrentControlSet\\Services\\NPSMSvc_f735a4c\\ImagePath"))!.place,
+    "hklm\\system\\currentcontrolset\\services");
+  assert.equal(placeOf("EventID: 1\nEventType: Process Create\nImage: C:\\x.exe"), null, "only file and registry writes group");
+});
+
+test("bursts: one program's writes under one place are one row that never hides its worst member", async () => {
+  decide = (e) => (e.includes("evil.dll") ? { token: "high", p: 0.9 } : { token: "none", p: 0.95 });
+  await scanOnce(25, logOf([unpack(1, "a.js"), unpack(2, "b.js"), unpack(3, "evil.dll"), unpack(4, "c.js"),
+    unpack(5, "x.js", "elsewhere-1"), unpack(6, "y.js", "elsewhere-2"), whoami(7)]));
+  const items = groupBursts(Object.values((await readState()).verdicts));
+  const groups = items.filter((i) => i.kind === "group");
+  assert.equal(groups.length, 1, "4 writes under one folder group; 1 under each other folder do not");
+  const g = groups[0]! as Extract<(typeof items)[number], { kind: "group" }>;
+  assert.equal(g.count, 4);
+  assert.deepEqual(g.bySeverity, { high: 1, none: 3 });
+  assert.equal(g.top.severity, "high", "the row shows its worst member");
+  assert.equal(g.needsReview, 1);
+  assert.equal(items.length, 4, "the group, two lone writes and the process");
+  assert.equal(items[0]!.kind, "group", "and it sorts where its worst member would: above the Medium whoami");
+});
+
+test("bursts: through the API, a group lists its members worst first and can be marked expected in one go", async () => {
+  decide = (e) => (e.includes("evil.dll") ? { token: "high", p: 0.9 } : e.includes("odd.js") ? { token: "medium", p: 0.6 } : { token: "none", p: 0.95 });
+  await scanOnce(25, logOf([unpack(1, "a.js"), unpack(2, "evil.dll"), unpack(3, "odd.js"), unpack(4, "b.js")]));
+  const app = express();
+  app.use(express.json());
+  app.use(behaviourRoutes);
+  const srv = app.listen(0, "127.0.0.1");
+  await new Promise((r) => srv.once("listening", r));
+  const port = (srv.address() as { port: number }).port;
+  const req = (method: string, p: string, body?: unknown) => new Promise<{ status: number; body: any }>((resolve, reject) => {
+    const data = body === undefined ? undefined : JSON.stringify(body);
+    const q = http.request({ host: "127.0.0.1", port, path: p, method,
+      headers: { Host: `localhost:${API_PORT}`, ...(data ? { "content-type": "application/json" } : {}) } }, (res) => {
+      let t = "";
+      res.on("data", (c) => (t += c));
+      res.on("end", () => resolve({ status: res.statusCode!, body: t ? JSON.parse(t) : null }));
+    });
+    q.on("error", reject);
+    q.end(data);
+  });
+  try {
+    const review = (await req("GET", "/api/behaviour/verdicts?view=review&group=1")).body as any[];
+    assert.equal(review.length, 1, "the High and the Medium are two of the folder's four writes: one row");
+    assert.equal(review[0].kind, "group");
+    assert.deepEqual([review[0].count, review[0].needsReview], [4, 2], "2 of 4 need review, shown with their context");
+    const flagged = (await req("GET", `/api/behaviour/verdicts/group?view=review&key=${encodeURIComponent(review[0].key)}`)).body as any[];
+    assert.deepEqual(flagged.map((m) => m.severity), ["high", "medium"], "opened in review, it lists what needs review");
+    const all = (await req("GET", "/api/behaviour/verdicts?view=all&group=1")).body as any[];
+    assert.equal(all[0].count, 4);
+    const key = encodeURIComponent(all[0].key);
+    const members = (await req("GET", `/api/behaviour/verdicts/group?key=${key}`)).body as any[];
+    assert.deepEqual(members.map((m) => m.severity), ["high", "medium", "none", "none"]);
+    const r = await req("POST", "/api/behaviour/verdicts/expected", { group: all[0].key, expected: true });
+    assert.deepEqual([r.status, r.body.changed], [200, 4]);
+    assert.deepEqual((await req("GET", "/api/behaviour/verdicts?view=review&group=1")).body, [], "nothing left to review");
+    assert.equal((await req("POST", "/api/behaviour/verdicts/expected", { group: "file|nope|x|y", expected: true })).status, 404);
+    assert.equal((await req("GET", "/api/behaviour/verdicts?view=all")).body.length, 4, "without group=1 the list is as before");
+  } finally {
+    srv.close();
+  }
+});
+
